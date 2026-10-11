@@ -156,6 +156,24 @@ DeviceResult<void> MicrophoneService::Start(MicrophoneSampleSink sink, void* con
 
 DeviceResult<void> MicrophoneService::Stop() const { return StatusResult(implementation_.Stop()); }
 
+DeviceResult<void> PeerRadioService::Start(const PeerRadioCallbacks& callbacks) const {
+    return StatusResult(implementation_.Start(callbacks));
+}
+
+DeviceResult<void> PeerRadioService::Stop() const { return StatusResult(implementation_.Stop()); }
+
+DeviceResult<void> PeerRadioService::BeginPairing() const { return StatusResult(implementation_.BeginPairing()); }
+
+DeviceResult<void> PeerRadioService::AcceptPeer(const uint8_t (&address)[6]) const {
+    return StatusResult(implementation_.AcceptPeer(address));
+}
+
+DeviceResult<void> PeerRadioService::Forget() const { return StatusResult(implementation_.Forget()); }
+
+DeviceResult<void> PeerRadioService::Send(const uint8_t* data, uint32_t length) const {
+    return StatusResult(implementation_.Send(data, length));
+}
+
 DeviceResult<micropixel_power_info_t> PowerInfoService::Get(micropixel_device_id_t device) {
     micropixel_device_info_t device_info{};
     const int32_t device_status = devices_.GetById(device, device_info);

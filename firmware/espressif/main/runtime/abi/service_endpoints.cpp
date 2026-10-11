@@ -410,6 +410,75 @@ int32_t MicrophoneServiceEndpoint::Call(uint32_t method_id, const uint8_t* reque
     return MICROPIXEL_STATUS_UNSUPPORTED;
 }
 
+ServiceDescriptor PeerRadioServiceEndpoint::Describe() const {
+    return ServiceDescriptor{
+        .service_id = MICROPIXEL_SERVICE_PEER_RADIO,
+        .interface_major = MICROPIXEL_PEER_RADIO_INTERFACE_MAJOR,
+        .interface_minor = MICROPIXEL_PEER_RADIO_INTERFACE_MINOR,
+        .flags = MICROPIXEL_SERVICE_FLAG_CALL | MICROPIXEL_SERVICE_FLAG_EVENTS,
+        .max_request_bytes = sizeof(micropixel_peer_radio_send_request_t) + MICROPIXEL_PEER_RADIO_MAX_PAYLOAD,
+        .max_response_bytes = sizeof(micropixel_peer_radio_receive_response_t) + MICROPIXEL_PEER_RADIO_MAX_PAYLOAD,
+    };
+}
+
+int32_t PeerRadioServiceEndpoint::Call(uint32_t method_id, const uint8_t* request, uint32_t request_size,
+                                       uint8_t* response, uint32_t response_capacity, uint32_t& response_size_out) {
+    switch (method_id) {
+        case MICROPIXEL_PEER_RADIO_METHOD_GET_STATE:
+            return EmptyRequest(request_size)
+                       ? WriteValue(context_.PeerRadioState(), response, response_capacity, response_size_out)
+                       : MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        case MICROPIXEL_PEER_RADIO_METHOD_START:
+            return EmptyRequest(request_size) ? ResultStatus(context_.PeerRadioStart())
+                                              : MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        case MICROPIXEL_PEER_RADIO_METHOD_STOP:
+            return EmptyRequest(request_size) ? ResultStatus(context_.PeerRadioStop())
+                                              : MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        case MICROPIXEL_PEER_RADIO_METHOD_PAIR_BEGIN:
+            return EmptyRequest(request_size) ? ResultStatus(context_.PeerRadioBeginPairing())
+                                              : MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        case MICROPIXEL_PEER_RADIO_METHOD_FORGET:
+            return EmptyRequest(request_size) ? ResultStatus(context_.PeerRadioForget())
+                                              : MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        case MICROPIXEL_PEER_RADIO_METHOD_PAIR_ACCEPT: {
+            micropixel_peer_radio_accept_request_t wire{};
+            if (!ReadRequest(request, request_size, wire)) {
+                return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+            }
+            uint8_t address[6];
+            std::memcpy(address, wire.address, sizeof(address));
+            return ResultStatus(context_.PeerRadioAccept(address));
+        }
+        case MICROPIXEL_PEER_RADIO_METHOD_SEND: {
+            micropixel_peer_radio_send_request_t wire{};
+            if (!ReadVariableRequest(request, request_size, wire) || wire.size != sizeof(wire) || wire.length == 0U ||
+                wire.length > MICROPIXEL_PEER_RADIO_MAX_PAYLOAD || request_size != sizeof(wire) + wire.length) {
+                return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+            }
+            return ResultStatus(context_.PeerRadioSend(request + sizeof(wire), wire.length));
+        }
+        case MICROPIXEL_PEER_RADIO_METHOD_RECEIVE: {
+            using Header = micropixel_peer_radio_receive_response_t;
+            if (!EmptyRequest(request_size)) {
+                return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+            }
+            if (response == nullptr || response_capacity < sizeof(Header) + MICROPIXEL_PEER_RADIO_MAX_PAYLOAD) {
+                response_size_out = sizeof(Header) + MICROPIXEL_PEER_RADIO_MAX_PAYLOAD;
+                return MICROPIXEL_STATUS_BUFFER_TOO_SMALL;
+            }
+            auto result = context_.PeerRadioReceive(response + sizeof(Header), MICROPIXEL_PEER_RADIO_MAX_PAYLOAD);
+            if (!result) {
+                return result.error().status;
+            }
+            std::memcpy(response, &*result, sizeof(Header));
+            response_size_out = sizeof(Header) + result->length;
+            return MICROPIXEL_STATUS_OK;
+        }
+        default:
+            return MICROPIXEL_STATUS_UNSUPPORTED;
+    }
+}
+
 SystemServiceEndpoint::SystemServiceEndpoint(std::string_view effective_locale,
                                              const micropixel_system_launch_arguments_response_t& launch_arguments)
     : launch_arguments_(launch_arguments) {

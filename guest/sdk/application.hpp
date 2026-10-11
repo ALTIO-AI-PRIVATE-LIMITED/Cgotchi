@@ -16,6 +16,7 @@
 #include "sdk/launch_arguments.hpp"
 #include "sdk/localization.hpp"
 #include "sdk/microphone.hpp"
+#include "sdk/peer_radio.hpp"
 #include "sdk/log.hpp"
 #include "sdk/power_info.hpp"
 #include "sdk/random.hpp"
@@ -72,6 +73,7 @@ class Application final {
     [[nodiscard]] constexpr Microphone microphone() const noexcept {
         return Microphone{Microphone::CapabilityToken{}};
     }
+    [[nodiscard]] constexpr PeerRadio peer_radio() const noexcept { return PeerRadio{PeerRadio::CapabilityToken{}}; }
 
     template <typename Handler>
     void Run(Handler&& handler) const {

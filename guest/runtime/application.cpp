@@ -112,6 +112,36 @@ bool Application::DecodeEventInternal(Event& event, uint64_t timeout_us) const {
         return true;
     }
 
+    if (raw.service_id == MICROPIXEL_SERVICE_PEER_RADIO) {
+        PeerRadioEvent peer{};
+        peer.timestamp_ = timestamp;
+        EventType type = EventType::kUnknown;
+        if (raw.event_id == MICROPIXEL_PEER_RADIO_EVENT_PACKET) {
+            type = EventType::kPeerPacket;
+            peer.kind_ = PeerRadioEventKind::kPacket;
+        } else if (raw.event_id == MICROPIXEL_PEER_RADIO_EVENT_STATE) {
+            micropixel_peer_radio_state_event_payload_t payload{};
+            CopyBytes(&payload, raw.payload, sizeof(payload));
+            type = EventType::kPeerState;
+            peer.kind_ = PeerRadioEventKind::kState;
+            peer.flags_ = payload.flags;
+            peer.channel_ = payload.channel;
+            peer.rssi_ = payload.peer_rssi;
+        } else if (raw.event_id == MICROPIXEL_PEER_RADIO_EVENT_PAIR_CANDIDATE) {
+            micropixel_peer_radio_candidate_event_payload_t payload{};
+            CopyBytes(&payload, raw.payload, sizeof(payload));
+            type = EventType::kPeerCandidate;
+            peer.kind_ = PeerRadioEventKind::kCandidate;
+            peer.code_ = payload.code;
+            peer.rssi_ = payload.rssi;
+            CopyBytes(peer.address_, payload.address, sizeof(peer.address_));
+        }
+        if (type != EventType::kUnknown) {
+            event = Event{type, peer};
+            return true;
+        }
+    }
+
     if (raw.service_id == MICROPIXEL_SERVICE_GRAPHICS && raw.event_id == MICROPIXEL_GRAPHICS_EVENT_SURFACE_RELEASED) {
         micropixel_surface_event_payload_t payload{};
         CopyBytes(&payload, raw.payload, sizeof(payload));

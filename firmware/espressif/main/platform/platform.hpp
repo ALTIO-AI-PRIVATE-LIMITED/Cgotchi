@@ -14,6 +14,7 @@
 #include "device/contracts/input.hpp"
 #include "device/contracts/local_control.hpp"
 #include "device/contracts/microphone.hpp"
+#include "device/contracts/peer_radio.hpp"
 #include "device/contracts/power.hpp"
 #include "device/contracts/random.hpp"
 #include "device/contracts/wifi.hpp"
@@ -51,6 +52,7 @@ struct PlatformServices final {
     device::Haptics* haptics{};
     device::HidKeyboard* hid_keyboard{};
     device::Microphone* microphone{};
+    device::PeerRadio* peer_radio{};
     // Optional dedicated App store medium (NAND, card). Null when the board
     // installs every Bundle into the NOR app_store partition.
     device::BlockStorage* app_storage{};
@@ -85,6 +87,7 @@ class BoardRegistration final {
     void SetLocalControl(device::LocalControl& local_control) { local_control_ = &local_control; }
     void SetHidKeyboard(device::HidKeyboard& hid_keyboard) { hid_keyboard_ = &hid_keyboard; }
     void SetMicrophone(device::Microphone& microphone) { microphone_ = &microphone; }
+    void SetPeerRadio(device::PeerRadio& peer_radio) { peer_radio_ = &peer_radio; }
     void SetAppStorage(device::BlockStorage& storage, uint32_t bundle_block_size = 0U, bool removable = false) {
         app_storage_ = &storage;
         app_storage_block_size_ = bundle_block_size;
@@ -121,6 +124,7 @@ class BoardRegistration final {
     device::LocalControl* local_control_{};
     device::HidKeyboard* hid_keyboard_{};
     device::Microphone* microphone_{};
+    device::PeerRadio* peer_radio_{};
     device::BlockStorage* app_storage_{};
     uint32_t app_storage_block_size_{};
     bool app_storage_removable_{};

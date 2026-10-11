@@ -82,6 +82,25 @@ UnavailableMicrophone& MissingMicrophone() {
     return value;
 }
 
+class UnavailablePeerRadio final : public device::PeerRadio {
+   public:
+    [[nodiscard]] micropixel_peer_radio_state_t State() const override {
+        micropixel_peer_radio_state_t state{};
+        state.size = sizeof(state);
+        return state;
+    }
+    [[nodiscard]] int32_t Start(const device::PeerRadioCallbacks&) override { return MICROPIXEL_STATUS_UNSUPPORTED; }
+    [[nodiscard]] int32_t Stop() override { return MICROPIXEL_STATUS_OK; }
+    [[nodiscard]] int32_t BeginPairing() override { return MICROPIXEL_STATUS_UNSUPPORTED; }
+    [[nodiscard]] int32_t AcceptPeer(const uint8_t (&)[6]) override { return MICROPIXEL_STATUS_UNSUPPORTED; }
+    [[nodiscard]] int32_t Forget() override { return MICROPIXEL_STATUS_UNSUPPORTED; }
+    [[nodiscard]] int32_t Send(const uint8_t*, uint32_t) override { return MICROPIXEL_STATUS_UNSUPPORTED; }
+};
+UnavailablePeerRadio& MissingPeerRadio() {
+    static UnavailablePeerRadio value;
+    return value;
+}
+
 defaults::UnavailableGraphics& MissingGraphics() {
     static defaults::UnavailableGraphics value;
     return value;
@@ -120,7 +139,8 @@ bool PlatformServices::Complete() const {
     return graphics != nullptr && input != nullptr && audio != nullptr && battery != nullptr && random != nullptr &&
            wifi != nullptr && cellular != nullptr && power != nullptr && local_control != nullptr &&
            devices != nullptr && sensors != nullptr && gpio != nullptr && haptics != nullptr &&
-           hid_keyboard != nullptr && microphone != nullptr && board_info.board != nullptr && system_ui != nullptr;
+           hid_keyboard != nullptr && microphone != nullptr && peer_radio != nullptr &&
+           board_info.board != nullptr && system_ui != nullptr;
 }
 
 void BoardRegistration::SetAudioOutput(audio::AudioOutputPeripheral& output, uint32_t sample_rate,
@@ -234,6 +254,7 @@ bool Platform::Publish(const BoardRegistration& registration) {
         .haptics = &device_registry_,
         .hid_keyboard = registration.hid_keyboard_ != nullptr ? registration.hid_keyboard_ : &MissingHidKeyboard(),
         .microphone = registration.microphone_ != nullptr ? registration.microphone_ : &MissingMicrophone(),
+        .peer_radio = registration.peer_radio_ != nullptr ? registration.peer_radio_ : &MissingPeerRadio(),
         .app_storage = registration.app_storage_,
         .app_storage_block_size = registration.app_storage_block_size_,
         .app_storage_removable = registration.app_storage_removable_,

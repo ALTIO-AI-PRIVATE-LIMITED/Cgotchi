@@ -36,6 +36,7 @@
 #include "platform/memory/internal_ram.hpp"
 #include "platform/transports/development_display_control.hpp"
 #include "platform/transports/usb_serial_jtag_local_control.hpp"
+#include "platform/wifi/esp_now_peer_radio.hpp"
 #include "platform/wifi/native_wifi_radio.hpp"
 #include "platform/wifi/wifi_manager.hpp"
 #include "work/task_policy.hpp"
@@ -285,6 +286,11 @@ class CheekoGotchiBoard final : public Board {
         if (microphone_status == ESP_OK) {
             registration.SetMicrophone(microphone_);
         }
+        if (const esp_err_t radio_status = peer_radio_.Initialize(); radio_status == ESP_OK) {
+            registration.SetPeerRadio(peer_radio_);
+        } else {
+            ESP_LOGW(kTag, "peer radio unavailable for this boot: %s", esp_err_to_name(radio_status));
+        }
         bool registered = true;
         if (sensors_.acceleration_available()) {
             registered = registration.AddSensor(sensors_, board_detail::SensorPeripheral::kAcceleration,
@@ -369,6 +375,8 @@ class CheekoGotchiBoard final : public Board {
         KeyConfig(board_detail::board::kVolumeUpButton, device::KeyCode::kRight, "gotchi_vol_up")};
     wifi::NativeWifiRadio wifi_radio_{};
     wifi::WifiManager wifi_{wifi_radio_};
+    // ESP-NOW link to a second Gotchi (walkie-talkie); idle until an App starts it.
+    wifi::EspNowPeerRadio peer_radio_{wifi_};
     // Shared by the WisprKey and Chat Remote Apps; started at boot.
     bluetooth::BleHidKeyboard hid_keyboard_{"CGotchi"};
 };
