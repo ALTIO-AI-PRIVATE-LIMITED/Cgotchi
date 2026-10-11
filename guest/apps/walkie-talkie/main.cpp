@@ -13,6 +13,7 @@
 #include <optional>
 
 #include "ima_adpcm.hpp"
+#include "tone_trace.hpp"
 #include "sdk/micropixel.hpp"
 
 namespace {
@@ -42,6 +43,16 @@ constexpr uint32_t kStreamCapacity = 2048U;
 // A talker that goes quiet this long without END has gone (out of range).
 constexpr uint64_t kListenTimeoutUs = 400000U;
 constexpr uint64_t kDoubleTapUs = 350000U;
+// Analog mic gain; the board default (30 dB) leaves speech from arm's length
+// near -50 dBFS while the noise floor sits near -70 dBFS.
+constexpr uint8_t kMicGainDb = 36U;
+// Talker-side automatic gain: lift quiet speech toward kAgcTargetPeak, at
+// most kAgcMaxGain times, backing off at once on loud frames.
+constexpr int32_t kAgcTargetPeak = 12000;
+constexpr uint32_t kAgcMaxGainQ8 = 4U * 256U;
+// Diagnostic: log every received audio packet as hex so the exact audio the
+// listener played can be rebuilt off-device.
+constexpr bool kDumpPackets = false;
 
 constexpr uint8_t kMagic = 'W';
 enum PacketFlag : uint8_t {
@@ -259,7 +270,7 @@ class WalkieTalkieApp final {
             Refresh();
             return;
         }
-        if (!microphone_.Start()) {
+        if (!microphone_.Start(kMicGainDb)) {
             fatal_ = "Mic start failed";
             Refresh();
             return;
@@ -269,6 +280,8 @@ class WalkieTalkieApp final {
         pressed_at_us_ = now;
         pending_ = 0U;
         encoder_ = {};
+        agc_gain_q8_ = 256U;
+        sent_trace_.Reset();
         first_packet_ = true;
         (void)tones_.Play(kTalkPermit);
         Refresh();
@@ -292,6 +305,7 @@ class WalkieTalkieApp final {
         talking_ = false;
         (void)microphone_.Stop();
         app_.log().Info(Text{}.Add("sent ").Number(static_cast<int32_t>(frames_sent_)).Add(" frames").c_str());
+        app_.log().Info(sent_trace_.c_str());
         frames_sent_ = 0U;
         if (send_end && !first_packet_) {
             PacketHeader header{kMagic, kEnd, ++sequence_, 0, 0U, 0U};
@@ -333,11 +347,33 @@ class WalkieTalkieApp final {
             header.predictor = encoder_.predictor;
             header.index = encoder_.index;
             std::memcpy(packet, &header, sizeof(header));
+            ApplyAgc(capture_, kFrameSamples);
+            sent_trace_.Add(capture_, kFrameSamples);
             walkie::Encode(encoder_, capture_, kFrameSamples, packet + sizeof(header));
             if (radio_.Send(packet, sizeof(packet))) {
                 ++frames_sent_;
             }
             first_packet_ = false;
+        }
+    }
+
+    void ApplyAgc(int16_t* samples, uint32_t count) {
+        int32_t peak = 1;
+        for (uint32_t index = 0U; index < count; ++index) {
+            const int32_t magnitude = samples[index] < 0 ? -samples[index] : samples[index];
+            peak = magnitude > peak ? magnitude : peak;
+        }
+        const uint32_t wanted = static_cast<uint32_t>(kAgcTargetPeak) * 256U / static_cast<uint32_t>(peak);
+        if (wanted < agc_gain_q8_) {
+            agc_gain_q8_ = wanted < 256U ? 256U : wanted;  // Back off at once.
+        } else {
+            agc_gain_q8_ += agc_gain_q8_ / 32U + 1U;  // About +6 dB per 0.5 s.
+        }
+        agc_gain_q8_ = agc_gain_q8_ > kAgcMaxGainQ8 ? kAgcMaxGainQ8 : agc_gain_q8_;
+        for (uint32_t index = 0U; index < count; ++index) {
+            int32_t value = static_cast<int32_t>(samples[index]) * static_cast<int32_t>(agc_gain_q8_) / 256;
+            value = value > 32767 ? 32767 : (value < -32768 ? -32768 : value);
+            samples[index] = static_cast<int16_t>(value);
         }
     }
 
@@ -375,6 +411,7 @@ class WalkieTalkieApp final {
         last_audio_us_ = Now();
         if (!listen_active_) {
             listen_active_ = true;
+            heard_trace_.Reset();
             jitter_count_ = 0U;
             playing_ = false;
             expected_sequence_ = header.sequence;
@@ -403,8 +440,24 @@ class WalkieTalkieApp final {
             Queue(last_frame_);
             ++frames_lost_;
         }
+        if (kDumpPackets) {
+            constexpr char kHex[] = "0123456789abcdef";
+            char line[2U + 2U * (sizeof(PacketHeader) + kFrameBytes) + 1U];
+            line[0] = 'P';
+            line[1] = ' ';
+            uint8_t raw[sizeof(PacketHeader) + kFrameBytes];
+            std::memcpy(raw, &header, sizeof(header));
+            std::memcpy(raw + sizeof(header), payload, kFrameBytes);
+            for (uint32_t index = 0U; index < sizeof(raw); ++index) {
+                line[2U + index * 2U] = kHex[raw[index] >> 4U];
+                line[3U + index * 2U] = kHex[raw[index] & 15U];
+            }
+            line[sizeof(line) - 1U] = '\0';
+            app_.log().Info(line);
+        }
         walkie::AdpcmState state{header.predictor, header.index};
         walkie::Decode(state, payload, kFrameSamples, last_frame_);
+        heard_trace_.Add(last_frame_, kFrameSamples);
         const uint32_t gain = kVolumeLevels[volume_];
         for (uint32_t index = 0U; index < kFrameSamples; ++index) {
             last_frame_[index] = static_cast<int16_t>(static_cast<int32_t>(last_frame_[index]) * gain / 1000U);
@@ -417,7 +470,8 @@ class WalkieTalkieApp final {
     // Holds the first kJitterFrames frames, then streams every frame as it
     // arrives; the PCM ring keeps that 60 ms lead through arrival jitter.
     void Queue(const int16_t* frame) {
-        if (!stream_) {
+        // The dump build stays silent so two units side by side cannot howl.
+        if (!stream_ || kDumpPackets) {
             return;
         }
         if (!playing_) {
@@ -455,6 +509,7 @@ class WalkieTalkieApp final {
                             .Number(static_cast<int32_t>(frames_lost_))
                             .Add(roger ? ", roger" : ", timeout")
                             .c_str());
+        app_.log().Info(heard_trace_.c_str());
         frames_received_ = 0U;
         frames_lost_ = 0U;
         if (roger) {
@@ -565,6 +620,9 @@ class WalkieTalkieApp final {
     uint32_t pending_{};
     int16_t capture_[kFrameSamples]{};
     walkie::AdpcmState encoder_{};
+    walkie::ToneTrace sent_trace_;
+    uint32_t agc_gain_q8_{256U};
+    walkie::ToneTrace heard_trace_;
     uint32_t frames_sent_{};
     // Listening.
     bool listen_active_{};
