@@ -69,6 +69,19 @@ UnavailableHidKeyboard& MissingHidKeyboard() {
     return value;
 }
 
+class UnavailableMicrophone final : public device::Microphone {
+   public:
+    [[nodiscard]] uint32_t SampleRate() const override { return 0U; }
+    [[nodiscard]] int32_t Start(device::MicrophoneSampleSink, void*, uint8_t) override {
+        return MICROPIXEL_STATUS_UNSUPPORTED;
+    }
+    [[nodiscard]] int32_t Stop() override { return MICROPIXEL_STATUS_OK; }
+};
+UnavailableMicrophone& MissingMicrophone() {
+    static UnavailableMicrophone value;
+    return value;
+}
+
 defaults::UnavailableGraphics& MissingGraphics() {
     static defaults::UnavailableGraphics value;
     return value;
@@ -107,7 +120,7 @@ bool PlatformServices::Complete() const {
     return graphics != nullptr && input != nullptr && audio != nullptr && battery != nullptr && random != nullptr &&
            wifi != nullptr && cellular != nullptr && power != nullptr && local_control != nullptr &&
            devices != nullptr && sensors != nullptr && gpio != nullptr && haptics != nullptr &&
-           hid_keyboard != nullptr && board_info.board != nullptr && system_ui != nullptr;
+           hid_keyboard != nullptr && microphone != nullptr && board_info.board != nullptr && system_ui != nullptr;
 }
 
 void BoardRegistration::SetAudioOutput(audio::AudioOutputPeripheral& output, uint32_t sample_rate,
@@ -220,6 +233,7 @@ bool Platform::Publish(const BoardRegistration& registration) {
         .gpio = &device_registry_,
         .haptics = &device_registry_,
         .hid_keyboard = registration.hid_keyboard_ != nullptr ? registration.hid_keyboard_ : &MissingHidKeyboard(),
+        .microphone = registration.microphone_ != nullptr ? registration.microphone_ : &MissingMicrophone(),
         .app_storage = registration.app_storage_,
         .app_storage_block_size = registration.app_storage_block_size_,
         .app_storage_removable = registration.app_storage_removable_,

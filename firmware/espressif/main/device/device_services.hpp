@@ -14,6 +14,7 @@
 #include "device/contracts/haptics.hpp"
 #include "device/contracts/hid_keyboard.hpp"
 #include "device/contracts/input.hpp"
+#include "device/contracts/microphone.hpp"
 #include "device/contracts/random.hpp"
 #include "device/contracts/sensors.hpp"
 
@@ -107,6 +108,18 @@ class HidKeyboardService final {
     HidKeyboard& implementation_;
 };
 
+class MicrophoneService final {
+   public:
+    explicit MicrophoneService(Microphone& implementation) : implementation_(implementation) {}
+
+    [[nodiscard]] uint32_t SampleRate() const { return implementation_.SampleRate(); }
+    [[nodiscard]] DeviceResult<void> Start(MicrophoneSampleSink sink, void* context, uint8_t gain_db) const;
+    [[nodiscard]] DeviceResult<void> Stop() const;
+
+   private:
+    Microphone& implementation_;
+};
+
 class GraphicsService final {
    public:
     GraphicsService(Graphics& implementation, DisplayInfo display)
@@ -195,7 +208,7 @@ class DeviceServices final {
    public:
     DeviceServices(Graphics& graphics, DisplayInfo display, Input& input, Audio& audio, Random& random,
                    DeviceCatalog& devices, Sensors& sensors, Gpio& gpio, Haptics& haptics, Battery& battery,
-                   HidKeyboard& hid_keyboard)
+                   HidKeyboard& hid_keyboard, Microphone& microphone)
         : graphics_(graphics, display),
           input_(input),
           audio_(audio),
@@ -205,7 +218,8 @@ class DeviceServices final {
           gpio_(gpio),
           haptics_(haptics),
           power_info_(devices, battery),
-          hid_keyboard_(hid_keyboard) {}
+          hid_keyboard_(hid_keyboard),
+          microphone_(microphone) {}
     DeviceServices(const DeviceServices&) = delete;
     DeviceServices& operator=(const DeviceServices&) = delete;
 
@@ -239,6 +253,9 @@ class DeviceServices final {
     [[nodiscard]] HidKeyboardService& hid_keyboard() {  // NOLINT(readability-identifier-naming)
         return hid_keyboard_;
     }
+    [[nodiscard]] MicrophoneService& microphone() {  // NOLINT(readability-identifier-naming)
+        return microphone_;
+    }
 
    private:
     GraphicsService graphics_;
@@ -251,6 +268,7 @@ class DeviceServices final {
     HapticsService haptics_;
     PowerInfoService power_info_;
     HidKeyboardService hid_keyboard_;
+    MicrophoneService microphone_;
 };
 
 }  // namespace micropixel::device

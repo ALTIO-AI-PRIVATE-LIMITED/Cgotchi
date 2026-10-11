@@ -15,6 +15,7 @@
 #include "sdk/input.hpp"
 #include "sdk/launch_arguments.hpp"
 #include "sdk/localization.hpp"
+#include "sdk/microphone.hpp"
 #include "sdk/log.hpp"
 #include "sdk/power_info.hpp"
 #include "sdk/random.hpp"
@@ -67,6 +68,9 @@ class Application final {
     [[nodiscard]] constexpr PowerInfo power_info() const noexcept { return PowerInfo{PowerInfo::CapabilityToken{}}; }
     [[nodiscard]] constexpr HidKeyboard hid_keyboard() const noexcept {
         return HidKeyboard{HidKeyboard::CapabilityToken{}};
+    }
+    [[nodiscard]] constexpr Microphone microphone() const noexcept {
+        return Microphone{Microphone::CapabilityToken{}};
     }
 
     template <typename Handler>

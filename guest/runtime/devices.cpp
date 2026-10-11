@@ -4,6 +4,7 @@
 #include "sdk/gpio.hpp"
 #include "sdk/haptics.hpp"
 #include "sdk/hid_keyboard.hpp"
+#include "sdk/microphone.hpp"
 #include "sdk/power_info.hpp"
 #include "sdk/sensors.hpp"
 
@@ -26,6 +27,13 @@ ServiceCache hid_keyboard_service;
 int32_t OpenHidKeyboardService() {
     return OpenService(hid_keyboard_service, MICROPIXEL_SERVICE_HID_KEYBOARD, MICROPIXEL_HID_KEYBOARD_INTERFACE_MAJOR,
                        MICROPIXEL_HID_KEYBOARD_INTERFACE_MINOR);
+}
+
+ServiceCache microphone_service;
+
+int32_t OpenMicrophoneService() {
+    return OpenService(microphone_service, MICROPIXEL_SERVICE_MICROPHONE, MICROPIXEL_MICROPHONE_INTERFACE_MAJOR,
+                       MICROPIXEL_MICROPHONE_INTERFACE_MINOR);
 }
 
 }  // namespace
@@ -541,6 +549,78 @@ Result<void> HidKeyboard::Consumer(HidConsumerUsage usage, bool pressed) const {
         status = CallVoid(hid_keyboard_service, MICROPIXEL_HID_KEYBOARD_METHOD_CONSUMER, &request, sizeof(request));
     }
     return status == MICROPIXEL_STATUS_OK ? Result<void>{} : Result<void>{unexpected(ErrorFromStatus(status))};
+}
+
+Result<MicrophoneInfo> Microphone::Info() const {
+    int32_t status = OpenMicrophoneService();
+    if (status != MICROPIXEL_STATUS_OK) {
+        return unexpected(ErrorFromStatus(status));
+    }
+    micropixel_microphone_info_t response{};
+    uint32_t response_size = 0U;
+    status = CallService(microphone_service, MICROPIXEL_MICROPHONE_METHOD_GET_INFO, nullptr, 0U, &response,
+                         sizeof(response), response_size);
+    if (status != MICROPIXEL_STATUS_OK) {
+        return unexpected(ErrorFromStatus(status));
+    }
+    if (response_size < sizeof(response) || response.size < sizeof(response)) {
+        runtime::Panic("microphone.info.response", MICROPIXEL_STATUS_INTERNAL);
+    }
+    return MicrophoneInfo{(response.flags & MICROPIXEL_MICROPHONE_FLAG_AVAILABLE) != 0U,
+                          (response.flags & MICROPIXEL_MICROPHONE_FLAG_STARTED) != 0U, response.sample_rate,
+                          response.frame_samples};
+}
+
+Result<void> Microphone::Start(uint8_t gain_db) const {
+    int32_t status = OpenMicrophoneService();
+    if (status == MICROPIXEL_STATUS_OK) {
+        micropixel_microphone_start_request_t request{};
+        request.size = sizeof(request);
+        request.gain_db = gain_db;
+        status = CallVoid(microphone_service, MICROPIXEL_MICROPHONE_METHOD_START, &request, sizeof(request));
+    }
+    return status == MICROPIXEL_STATUS_OK ? Result<void>{} : Result<void>{unexpected(ErrorFromStatus(status))};
+}
+
+Result<void> Microphone::Stop() const {
+    int32_t status = OpenMicrophoneService();
+    if (status == MICROPIXEL_STATUS_OK) {
+        status = CallVoid(microphone_service, MICROPIXEL_MICROPHONE_METHOD_STOP, nullptr, 0U);
+    }
+    return status == MICROPIXEL_STATUS_OK ? Result<void>{} : Result<void>{unexpected(ErrorFromStatus(status))};
+}
+
+Result<uint32_t> Microphone::Read(int16_t* samples, uint32_t max_samples) const {
+    if (samples == nullptr || max_samples == 0U || max_samples > kMaxReadSamples) {
+        return unexpected(Error{ErrorCode::kInvalidArgument});
+    }
+    int32_t status = OpenMicrophoneService();
+    if (status != MICROPIXEL_STATUS_OK) {
+        return unexpected(ErrorFromStatus(status));
+    }
+    micropixel_microphone_read_request_t request{};
+    request.size = sizeof(request);
+    request.max_samples = max_samples;
+    // Header plus samples in one response; not zero-initialised.
+    alignas(4) uint8_t response[sizeof(micropixel_microphone_read_response_t) + kMaxReadSamples * sizeof(int16_t)];
+    uint32_t response_size = 0U;
+    status = CallService(microphone_service, MICROPIXEL_MICROPHONE_METHOD_READ, &request, sizeof(request), response,
+                         sizeof(micropixel_microphone_read_response_t) + max_samples * sizeof(int16_t),
+                         response_size);
+    if (status != MICROPIXEL_STATUS_OK) {
+        return unexpected(ErrorFromStatus(status));
+    }
+    micropixel_microphone_read_response_t header{};
+    if (response_size < sizeof(header)) {
+        runtime::Panic("microphone.read.response", MICROPIXEL_STATUS_INTERNAL);
+    }
+    CopyBytes(&header, response, sizeof(header));
+    if (header.size != sizeof(header) || header.sample_count > max_samples ||
+        response_size != sizeof(header) + header.sample_count * sizeof(int16_t)) {
+        runtime::Panic("microphone.read.response", MICROPIXEL_STATUS_INTERNAL);
+    }
+    CopyBytes(samples, response + sizeof(header), header.sample_count * sizeof(int16_t));
+    return header.sample_count;
 }
 
 }  // namespace micropixel

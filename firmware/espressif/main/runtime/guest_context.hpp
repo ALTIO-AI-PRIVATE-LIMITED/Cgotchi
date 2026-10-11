@@ -17,6 +17,7 @@
 #include "runtime/services/direct_surface_service.hpp"
 #include "runtime/services/gpio_service.hpp"
 #include "runtime/services/haptics_service.hpp"
+#include "runtime/services/microphone_service.hpp"
 #include "runtime/services/raster_service.hpp"
 #include "runtime/services/sensor_service.hpp"
 #include "runtime/services/storage_service.hpp"
@@ -54,7 +55,7 @@ class GuestContext final {
 
     [[nodiscard]] bool valid() const {  // NOLINT(readability-identifier-naming)
         return events_.valid() && timers_.valid() && sensors_.valid() && gpio_.valid() && haptics_.valid() &&
-               resources_.valid() && audio_playback_.valid() && storage_.valid() && audio_foreground_ready_;
+               microphone_.valid() && resources_.valid() && audio_playback_.valid() && storage_.valid() && audio_foreground_ready_;
     }
     [[nodiscard]] micropixel_app_time_t AppTimeNow() const { return timers_.Now(); }
     [[nodiscard]] EventWaitResult WaitEvent(micropixel_event_t& event, uint64_t timeout_us) {
@@ -268,6 +269,13 @@ class GuestContext final {
     [[nodiscard]] device::DeviceResult<void> HidKeyboardConsumer(uint16_t usage, bool pressed) {
         return devices_.hid_keyboard().Consumer(usage, pressed);
     }
+    [[nodiscard]] micropixel_microphone_info_t MicrophoneInfo() const { return microphone_.Info(); }
+    [[nodiscard]] ServiceResult<void> MicrophoneStart(uint8_t gain_db) { return microphone_.Start(gain_db); }
+    [[nodiscard]] ServiceResult<void> MicrophoneStop() { return microphone_.Stop(); }
+    [[nodiscard]] ServiceResult<micropixel_microphone_read_response_t> MicrophoneRead(int16_t* samples_out,
+                                                                                       uint32_t max_samples) {
+        return microphone_.Read(samples_out, max_samples);
+    }
     [[nodiscard]] device::DeviceResult<void> AudioPlayTone(const micropixel_audio_tone_t& tone) const {
         return devices_.audio().PlayTone(tone);
     }
@@ -354,6 +362,7 @@ class GuestContext final {
     SensorService sensors_;
     GpioService gpio_;
     HapticsService haptics_;
+    MicrophoneService microphone_;
     ResourceService resources_;
     AudioPlaybackService audio_playback_;
     PcmStreamService pcm_stream_;
@@ -376,6 +385,7 @@ class GuestContext final {
     HapticsServiceEndpoint haptics_endpoint_;
     PowerInfoServiceEndpoint power_info_endpoint_;
     HidKeyboardServiceEndpoint hid_keyboard_endpoint_;
+    MicrophoneServiceEndpoint microphone_endpoint_;
     ServiceRegistry service_registry_;
     uint32_t core_sequence_{};
     bool suspended_{};

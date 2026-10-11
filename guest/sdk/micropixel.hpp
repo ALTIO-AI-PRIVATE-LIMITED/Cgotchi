@@ -17,6 +17,7 @@
 #include "sdk/input.hpp"
 #include "sdk/launch_arguments.hpp"
 #include "sdk/localization.hpp"
+#include "sdk/microphone.hpp"
 #include "sdk/math.hpp"
 #include "sdk/panic.hpp"
 #include "sdk/power_info.hpp"

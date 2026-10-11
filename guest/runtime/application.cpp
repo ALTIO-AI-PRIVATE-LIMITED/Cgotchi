@@ -102,6 +102,16 @@ bool Application::DecodeEventInternal(Event& event, uint64_t timeout_us) const {
         return true;
     }
 
+    if (raw.service_id == MICROPIXEL_SERVICE_MICROPHONE && raw.event_id == MICROPIXEL_MICROPHONE_EVENT_FRAMES) {
+        micropixel_microphone_event_payload_t payload{};
+        CopyBytes(&payload, raw.payload, sizeof(payload));
+        if (payload.reserved0[0] != 0U || payload.reserved0[1] != 0U || raw.status != MICROPIXEL_STATUS_OK) {
+            runtime::Panic("application.wait_event.microphone_payload", MICROPIXEL_STATUS_INTERNAL);
+        }
+        event = Event{MicrophoneEvent{timestamp, payload.available_samples, payload.dropped_samples}};
+        return true;
+    }
+
     if (raw.service_id == MICROPIXEL_SERVICE_GRAPHICS && raw.event_id == MICROPIXEL_GRAPHICS_EVENT_SURFACE_RELEASED) {
         micropixel_surface_event_payload_t payload{};
         CopyBytes(&payload, raw.payload, sizeof(payload));

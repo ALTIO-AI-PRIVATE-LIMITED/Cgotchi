@@ -30,6 +30,7 @@ GuestContext::GuestContext(const micropixel_aot_package_t& package, device::Devi
       sensors_(devices_.sensors(), timers_),
       gpio_(devices_.gpio(), events_, timers_),
       haptics_(devices_.haptics(), events_, timers_),
+      microphone_(devices_.microphone(), events_, timers_),
       resources_(package, background_executor, devices_.graphics()),
       audio_playback_(package, devices_.audio(), events_, clock_origin_us_),
       pcm_stream_(devices_.audio(), events_, clock_origin_us_),
@@ -56,9 +57,11 @@ GuestContext::GuestContext(const micropixel_aot_package_t& package, device::Devi
       haptics_endpoint_(*this),
       power_info_endpoint_(*this),
       hid_keyboard_endpoint_(*this),
+      microphone_endpoint_(*this),
       service_registry_(timer_endpoint_, system_endpoint_, storage_endpoint_, resource_endpoint_, random_endpoint_,
                         graphics_endpoint_, input_endpoint_, audio_endpoint_, devices_endpoint_, sensors_endpoint_,
-                        gpio_endpoint_, haptics_endpoint_, power_info_endpoint_, hid_keyboard_endpoint_) {
+                        gpio_endpoint_, haptics_endpoint_, power_info_endpoint_, hid_keyboard_endpoint_,
+                        microphone_endpoint_) {
     (void)std::snprintf(app_id_.data(), app_id_.size(), "%s", reinterpret_cast<const char*>(package.app_id));
     const auto audio_result = devices_.audio().ResumeAll();
     audio_foreground_ready_ = audio_result || audio_result.error().status == MICROPIXEL_STATUS_UNSUPPORTED;
@@ -86,6 +89,7 @@ GuestContext::~GuestContext() {
     sensors_.Shutdown();
     gpio_.Shutdown();
     haptics_.Shutdown();
+    microphone_.Shutdown();
     audio_playback_.Shutdown();
     pcm_stream_.Shutdown();
     (void)devices_.audio().StopAll();
@@ -122,6 +126,7 @@ bool GuestContext::Suspend(TickType_t timeout) {
     sensors_.Suspend();
     gpio_.Suspend();
     haptics_.Suspend();
+    microphone_.Suspend();
     const bool timers_suspended = timers_.Suspend();
     auto audio_result = devices_.audio().SuspendAll();
     const bool audio_suspended = audio_result || audio_result.error().status == MICROPIXEL_STATUS_UNSUPPORTED;
@@ -173,6 +178,7 @@ bool GuestContext::Resume() {
     }
     touch_events_.Resume();
     key_events_.Resume();
+    microphone_.Resume();
     // Before the Guest wakes: its first frame after RESUME must be shown.
     direct_surface_.Resume();
     events_.Resume();
@@ -187,6 +193,7 @@ bool GuestContext::RequestStop() {
     sensors_.Suspend();
     gpio_.Suspend();
     haptics_.Suspend();
+    microphone_.Suspend();
     (void)timers_.Suspend();
     (void)devices_.audio().SuspendAll();
     micropixel_event_t stop_event{};
@@ -209,6 +216,7 @@ void GuestContext::ForceStop() {
     sensors_.Suspend();
     gpio_.Suspend();
     haptics_.Suspend();
+    microphone_.Suspend();
     (void)timers_.Suspend();
     (void)devices_.audio().SuspendAll();
     events_.Close();

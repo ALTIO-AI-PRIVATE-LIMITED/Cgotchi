@@ -352,6 +352,64 @@ int32_t HidKeyboardServiceEndpoint::Call(uint32_t method_id, const uint8_t* requ
     return MICROPIXEL_STATUS_UNSUPPORTED;
 }
 
+ServiceDescriptor MicrophoneServiceEndpoint::Describe() const {
+    return ServiceDescriptor{
+        .service_id = MICROPIXEL_SERVICE_MICROPHONE,
+        .interface_major = MICROPIXEL_MICROPHONE_INTERFACE_MAJOR,
+        .interface_minor = MICROPIXEL_MICROPHONE_INTERFACE_MINOR,
+        .flags = MICROPIXEL_SERVICE_FLAG_CALL | MICROPIXEL_SERVICE_FLAG_EVENTS,
+        .max_request_bytes = sizeof(micropixel_microphone_start_request_t),
+        .max_response_bytes =
+            sizeof(micropixel_microphone_read_response_t) + MICROPIXEL_MICROPHONE_MAX_READ_SAMPLES * sizeof(int16_t),
+    };
+}
+
+int32_t MicrophoneServiceEndpoint::Call(uint32_t method_id, const uint8_t* request, uint32_t request_size,
+                                        uint8_t* response, uint32_t response_capacity, uint32_t& response_size_out) {
+    if (method_id == MICROPIXEL_MICROPHONE_METHOD_GET_INFO) {
+        if (!EmptyRequest(request_size)) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return WriteValue(context_.MicrophoneInfo(), response, response_capacity, response_size_out);
+    }
+    if (method_id == MICROPIXEL_MICROPHONE_METHOD_START) {
+        micropixel_microphone_start_request_t wire{};
+        if (!ReadRequest(request, request_size, wire) || wire.reserved1 != 0U) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return ResultStatus(context_.MicrophoneStart(wire.gain_db));
+    }
+    if (method_id == MICROPIXEL_MICROPHONE_METHOD_STOP) {
+        if (!EmptyRequest(request_size)) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return ResultStatus(context_.MicrophoneStop());
+    }
+    if (method_id == MICROPIXEL_MICROPHONE_METHOD_READ) {
+        using Header = micropixel_microphone_read_response_t;
+        micropixel_microphone_read_request_t wire{};
+        if (!ReadRequest(request, request_size, wire) || wire.max_samples == 0U ||
+            wire.max_samples > MICROPIXEL_MICROPHONE_MAX_READ_SAMPLES) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        if (response == nullptr || response_capacity < sizeof(Header)) {
+            response_size_out = sizeof(Header);
+            return MICROPIXEL_STATUS_BUFFER_TOO_SMALL;
+        }
+        const uint32_t max_samples =
+            std::min<uint32_t>(wire.max_samples, (response_capacity - sizeof(Header)) / sizeof(int16_t));
+        auto result =
+            context_.MicrophoneRead(reinterpret_cast<int16_t*>(response + sizeof(Header)), max_samples);
+        if (!result) {
+            return result.error().status;
+        }
+        std::memcpy(response, &*result, sizeof(Header));
+        response_size_out = sizeof(Header) + result->sample_count * sizeof(int16_t);
+        return MICROPIXEL_STATUS_OK;
+    }
+    return MICROPIXEL_STATUS_UNSUPPORTED;
+}
+
 SystemServiceEndpoint::SystemServiceEndpoint(std::string_view effective_locale,
                                              const micropixel_system_launch_arguments_response_t& launch_arguments)
     : launch_arguments_(launch_arguments) {

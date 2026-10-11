@@ -150,6 +150,12 @@ DeviceResult<void> HidKeyboardService::Consumer(uint16_t usage, bool pressed) co
     return StatusResult(implementation_.Consumer(usage, pressed));
 }
 
+DeviceResult<void> MicrophoneService::Start(MicrophoneSampleSink sink, void* context, uint8_t gain_db) const {
+    return StatusResult(implementation_.Start(sink, context, gain_db));
+}
+
+DeviceResult<void> MicrophoneService::Stop() const { return StatusResult(implementation_.Stop()); }
+
 DeviceResult<micropixel_power_info_t> PowerInfoService::Get(micropixel_device_id_t device) {
     micropixel_device_info_t device_info{};
     const int32_t device_status = devices_.GetById(device, device_info);

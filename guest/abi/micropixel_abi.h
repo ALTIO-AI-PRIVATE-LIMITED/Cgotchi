@@ -54,6 +54,10 @@
 #define MICROPIXEL_POWER_INTERFACE_MINOR 0U
 #define MICROPIXEL_HID_KEYBOARD_INTERFACE_MAJOR 1U
 #define MICROPIXEL_HID_KEYBOARD_INTERFACE_MINOR 0U
+#define MICROPIXEL_MICROPHONE_INTERFACE_MAJOR 1U
+#define MICROPIXEL_MICROPHONE_INTERFACE_MINOR 0U
+/* Most mono int16 samples one Microphone READ returns. */
+#define MICROPIXEL_MICROPHONE_MAX_READ_SAMPLES 960U
 #define MICROPIXEL_DEVICES_LIST_PAGE_SIZE 16U
 #define MICROPIXEL_DEVICE_NAME_MAX_BYTES 39U
 
@@ -108,6 +112,7 @@ typedef enum micropixel_service_id {
     MICROPIXEL_SERVICE_HAPTICS = 22,
     MICROPIXEL_SERVICE_POWER = 23,
     MICROPIXEL_SERVICE_HID_KEYBOARD = 24,
+    MICROPIXEL_SERVICE_MICROPHONE = 25,
 } micropixel_service_id_t;
 
 typedef enum micropixel_service_flag {
@@ -600,6 +605,68 @@ typedef struct micropixel_hid_keyboard_consumer_request {
     uint8_t reserved0;
     uint16_t reserved1;
 } micropixel_hid_keyboard_consumer_request_t;
+
+/* Built-in microphone, mono int16 at `sample_rate`. START powers the
+ * capture path and fills a Host ring; FRAMES fires once each time at least
+ * `frame_samples` are buffered and the Guest has not read since the last
+ * event (READ re-arms it). When the Guest falls behind the Host drops the
+ * oldest samples and reports the count. Capture stops at STOP, App suspend
+ * and session end; it only runs while the App is in the foreground. */
+typedef enum micropixel_microphone_method {
+    MICROPIXEL_MICROPHONE_METHOD_GET_INFO = 1,
+    MICROPIXEL_MICROPHONE_METHOD_START = 2,
+    MICROPIXEL_MICROPHONE_METHOD_STOP = 3,
+    MICROPIXEL_MICROPHONE_METHOD_READ = 4,
+} micropixel_microphone_method_t;
+
+typedef enum micropixel_microphone_event_id {
+    MICROPIXEL_MICROPHONE_EVENT_FRAMES = 1,
+} micropixel_microphone_event_id_t;
+
+typedef enum micropixel_microphone_flag {
+    MICROPIXEL_MICROPHONE_FLAG_AVAILABLE = 1U << 0U,
+    MICROPIXEL_MICROPHONE_FLAG_STARTED = 1U << 1U,
+} micropixel_microphone_flag_t;
+
+typedef struct micropixel_microphone_info {
+    uint16_t size;
+    uint16_t frame_samples;
+    uint32_t sample_rate;
+    uint32_t flags;
+    uint32_t reserved0;
+} micropixel_microphone_info_t;
+
+/* `gain_db` 0..37 analog gain; 0xFF keeps the Host default. */
+typedef struct micropixel_microphone_start_request {
+    uint16_t size;
+    uint8_t gain_db;
+    uint8_t reserved0;
+    uint32_t reserved1;
+} micropixel_microphone_start_request_t;
+
+typedef struct micropixel_microphone_read_request {
+    uint16_t size;
+    uint16_t reserved0;
+    uint32_t max_samples;
+} micropixel_microphone_read_request_t;
+
+/* Followed by `sample_count` little-endian int16 samples; `size` covers the
+ * header only. */
+typedef struct micropixel_microphone_read_response {
+    uint16_t size;
+    uint16_t reserved0;
+    uint32_t sample_count;
+    /* Samples still buffered after this read. */
+    uint32_t available_samples;
+    /* Samples dropped since the previous READ because the ring was full. */
+    uint32_t dropped_samples;
+} micropixel_microphone_read_response_t;
+
+typedef struct micropixel_microphone_event_payload {
+    uint32_t available_samples;
+    uint32_t dropped_samples;
+    uint32_t reserved0[2];
+} micropixel_microphone_event_payload_t;
 
 typedef enum micropixel_graphics_method {
     MICROPIXEL_GRAPHICS_METHOD_GET_INFO = 1,
@@ -1798,6 +1865,16 @@ MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_hid_keyboard_key_request_t) == 8U
                              "micropixel_hid_keyboard_key_request_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_hid_keyboard_consumer_request_t) == 8U,
                              "micropixel_hid_keyboard_consumer_request_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_microphone_info_t) == 16U,
+                             "micropixel_microphone_info_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_microphone_start_request_t) == 8U,
+                             "micropixel_microphone_start_request_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_microphone_read_request_t) == 8U,
+                             "micropixel_microphone_read_request_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_microphone_read_response_t) == 16U,
+                             "micropixel_microphone_read_response_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_microphone_event_payload_t) == 16U,
+                             "micropixel_microphone_event_payload_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_timer_event_payload_t) == 16U,
                              "micropixel_timer_event_payload_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_touch_event_payload_t) == 16U,

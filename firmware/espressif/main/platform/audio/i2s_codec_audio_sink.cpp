@@ -15,7 +15,6 @@ namespace micropixel::platform::audio {
 namespace {
 
 constexpr uint32_t kMclkMultiple = 256U;
-constexpr int kI2cTimeoutMs = 100;
 
 bool ValidConfig(const I2sCodecAudioConfig& config) {
     return config.name != nullptr && config.log_tag != nullptr && config.master_clock != GPIO_NUM_NC &&
@@ -27,113 +26,12 @@ bool ValidConfig(const I2sCodecAudioConfig& config) {
 
 }  // namespace
 
-I2sCodecAudioSink::CodecControl& I2sCodecAudioSink::Control(const audio_codec_ctrl_if_t* interface) {
-    return *reinterpret_cast<CodecControl*>(const_cast<audio_codec_ctrl_if_t*>(interface));
-}
-
-int I2sCodecAudioSink::ControlOpen(const audio_codec_ctrl_if_t* interface, void*, int) {
-    CodecControl& control = Control(interface);
-    control.open = control.executor != nullptr && control.device != nullptr;
-    return control.open ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_WRONG_STATE;
-}
-
-bool I2sCodecAudioSink::ControlIsOpen(const audio_codec_ctrl_if_t* interface) {
-    return interface != nullptr && Control(interface).open;
-}
-
-int I2sCodecAudioSink::ControlRead(const audio_codec_ctrl_if_t* interface, int reg, int reg_len, void* data,
-                                   int data_len) {
-    if (interface == nullptr || data == nullptr || reg_len < 1 || reg_len > 2 || data_len < 1) {
-        return ESP_CODEC_DEV_INVALID_ARG;
-    }
-    CodecControl& control = Control(interface);
-    if (!control.open || control.executor == nullptr || control.device == nullptr) {
-        return ESP_CODEC_DEV_WRONG_STATE;
-    }
-    struct Request final {
-        i2c_master_dev_handle_t device;
-        uint8_t address[2];
-        int address_length;
-        void* data;
-        int data_length;
-    } request{
-        .device = control.device,
-        .address = {static_cast<uint8_t>(reg_len > 1 ? reg >> 8 : reg), static_cast<uint8_t>(reg)},
-        .address_length = reg_len,
-        .data = data,
-        .data_length = data_len,
-    };
-    if (reg_len == 1) {
-        request.address[0] = static_cast<uint8_t>(reg);
-    }
-    const esp_err_t status = control.executor->Invoke(
-        buses::I2cExecutor::Priority::kHigh,
-        [](void* context) {
-            auto& requested = *static_cast<Request*>(context);
-            return i2c_master_transmit_receive(requested.device, requested.address, requested.address_length,
-                                               static_cast<uint8_t*>(requested.data), requested.data_length,
-                                               kI2cTimeoutMs);
-        },
-        &request);
-    return status == ESP_OK ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_READ_FAIL;
-}
-
-int I2sCodecAudioSink::ControlWrite(const audio_codec_ctrl_if_t* interface, int reg, int reg_len, void* data,
-                                    int data_len) {
-    if (interface == nullptr || data == nullptr || reg_len < 1 || reg_len > 2 || data_len < 0 ||
-        reg_len + data_len > 8) {
-        return ESP_CODEC_DEV_INVALID_ARG;
-    }
-    CodecControl& control = Control(interface);
-    if (!control.open || control.executor == nullptr || control.device == nullptr) {
-        return ESP_CODEC_DEV_WRONG_STATE;
-    }
-    struct Request final {
-        i2c_master_dev_handle_t device;
-        uint8_t bytes[8];
-        int length;
-    } request{.device = control.device, .bytes = {}, .length = reg_len + data_len};
-    if (reg_len > 1) {
-        request.bytes[0] = static_cast<uint8_t>(reg >> 8);
-        request.bytes[1] = static_cast<uint8_t>(reg);
-    } else {
-        request.bytes[0] = static_cast<uint8_t>(reg);
-    }
-    std::memcpy(request.bytes + reg_len, data, static_cast<size_t>(data_len));
-    const esp_err_t status = control.executor->Invoke(
-        buses::I2cExecutor::Priority::kHigh,
-        [](void* context) {
-            auto& requested = *static_cast<Request*>(context);
-            return i2c_master_transmit(requested.device, requested.bytes, requested.length, kI2cTimeoutMs);
-        },
-        &request);
-    return status == ESP_OK ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_WRITE_FAIL;
-}
-
-int I2sCodecAudioSink::ControlClose(const audio_codec_ctrl_if_t* interface) {
-    if (interface == nullptr) {
-        return ESP_CODEC_DEV_INVALID_ARG;
-    }
-    Control(interface).open = false;
-    return ESP_CODEC_DEV_OK;
-}
-
 esp_err_t I2sCodecAudioSink::Configure(i2c_master_bus_handle_t bus, buses::I2cExecutor& executor) {
     if (!ValidConfig(config_) || bus == nullptr || codec_i2c_ != nullptr) {
         return ESP_ERR_INVALID_ARG;
     }
     if (config_.probe_before_attach) {
-        struct ProbeRequest final {
-            i2c_master_bus_handle_t bus;
-            uint16_t address;
-        } request{.bus = bus, .address = config_.codec_i2c_address};
-        const esp_err_t probe_status = executor.Invoke(
-            buses::I2cExecutor::Priority::kHigh,
-            [](void* context) {
-                const auto& requested = *static_cast<ProbeRequest*>(context);
-                return i2c_master_probe(requested.bus, requested.address, kI2cTimeoutMs);
-            },
-            &request);
+        const esp_err_t probe_status = ProbeCodec(executor, bus, config_.codec_i2c_address);
         if (probe_status != ESP_OK) {
             ESP_LOGW(config_.log_tag, "%s did not acknowledge at I2C 0x%02x: %s", config_.name,
                      config_.codec_i2c_address, esp_err_to_name(probe_status));
@@ -146,33 +44,7 @@ esp_err_t I2sCodecAudioSink::Configure(i2c_master_bus_handle_t bus, buses::I2cEx
     device_config.scl_speed_hz = config_.i2c_clock_hz;
     ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(bus, &device_config, &codec_i2c_), config_.log_tag,
                         "attach codec control bus failed");
-    control_.interface = {};
-    control_.interface.open = ControlOpen;
-    control_.interface.is_open = ControlIsOpen;
-    control_.interface.read_reg = ControlRead;
-    control_.interface.write_reg = ControlWrite;
-    auto configure_optional_info = []<typename Interface>(Interface& interface) {
-        if constexpr (requires { interface.get_info; }) {
-            interface.get_info = [](const audio_codec_ctrl_if_t* raw, auto* info) -> int {
-                if (raw == nullptr || info == nullptr) {
-                    return ESP_CODEC_DEV_INVALID_ARG;
-                }
-                const CodecControl& control = Control(raw);
-                *info = {};
-                info->type = static_cast<decltype(info->type)>(1);
-                info->i2c.addr = static_cast<uint16_t>(control.address << 1U);
-                info->i2c.port = static_cast<uint8_t>(control.port);
-                return ESP_CODEC_DEV_OK;
-            };
-        }
-    };
-    configure_optional_info(control_.interface);
-    control_.interface.close = ControlClose;
-    control_.executor = &executor;
-    control_.device = codec_i2c_;
-    control_.address = config_.codec_i2c_address;
-    control_.port = config_.i2c_port;
-    control_.open = true;
+    control_.Bind(executor, codec_i2c_, config_.codec_i2c_address, config_.i2c_port);
     return ESP_OK;
 }
 
@@ -199,7 +71,7 @@ esp_err_t I2sCodecAudioSink::Initialize() {
     if (control_.executor == nullptr || codec_i2c_ == nullptr || tx_ != nullptr || codec_ != nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (ControlOpen(&control_.interface, nullptr, 0) != ESP_CODEC_DEV_OK) {
+    if (CodecI2cControl::Open(control_.Interface(), nullptr, 0) != ESP_CODEC_DEV_OK) {
         return ESP_ERR_INVALID_STATE;
     }
     esp_err_t status = SetAmplifier(false);
@@ -218,7 +90,8 @@ esp_err_t I2sCodecAudioSink::Initialize() {
     channel_config.dma_desc_num = config_.dma_descriptor_count;
     channel_config.dma_frame_num = config_.dma_frame_count;
     channel_config.auto_clear_after_cb = true;
-    status = i2s_new_channel(&channel_config, &tx_, nullptr);
+    i2s_chan_handle_t rx = nullptr;
+    status = i2s_new_channel(&channel_config, &tx_, config_.data_in != GPIO_NUM_NC ? &rx : nullptr);
     if (status != ESP_OK) {
         return FailInitialization(status);
     }
@@ -234,7 +107,23 @@ esp_err_t I2sCodecAudioSink::Initialize() {
     standard_config.gpio_cfg.din = I2S_GPIO_UNUSED;
     status = i2s_channel_init_std_mode(tx_, &standard_config);
     if (status != ESP_OK) {
+        if (rx != nullptr) {
+            (void)i2s_del_channel(rx);
+        }
         return FailInitialization(status);
+    }
+    if (rx != nullptr) {
+        // Same clock as TX, which drives BCLK/WS; the ADC codec is a slave.
+        i2s_std_config_t input_config = standard_config;
+        input_config.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+        input_config.gpio_cfg.dout = I2S_GPIO_UNUSED;
+        input_config.gpio_cfg.din = config_.data_in;
+        status = i2s_channel_init_std_mode(rx, &input_config);
+        if (status != ESP_OK) {
+            (void)i2s_del_channel(rx);
+            return FailInitialization(status);
+        }
+        rx_.store(rx, std::memory_order_release);
     }
 
     audio_codec_i2s_cfg_t i2s_config{};
@@ -245,7 +134,7 @@ esp_err_t I2sCodecAudioSink::Initialize() {
     if (data_if_ == nullptr || gpio_if_ == nullptr) {
         return FailInitialization(ESP_ERR_NO_MEM);
     }
-    codec_if_ = CreateCodec(&control_.interface, gpio_if_);
+    codec_if_ = CreateCodec(control_.Interface(), gpio_if_);
     if (codec_if_ == nullptr) {
         return FailInitialization(ESP_FAIL);
     }
@@ -388,6 +277,10 @@ void I2sCodecAudioSink::Shutdown() {
     if (gpio_if_ != nullptr) {
         (void)audio_codec_delete_gpio_if(gpio_if_);
         gpio_if_ = nullptr;
+    }
+    if (i2s_chan_handle_t rx = rx_.exchange(nullptr, std::memory_order_acq_rel); rx != nullptr) {
+        (void)i2s_channel_disable(rx);
+        (void)i2s_del_channel(rx);
     }
     if (tx_ != nullptr) {
         if (output_enabled_) {
