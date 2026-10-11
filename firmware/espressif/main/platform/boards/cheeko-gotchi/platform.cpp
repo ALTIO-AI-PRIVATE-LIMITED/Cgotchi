@@ -361,7 +361,6 @@ class CheekoGotchiBoard final : public Board {
                                             .i2c_clock_hz = 100000U,
                                             .sample_rate = detail::kAudioSampleRate,
                                             .default_gain_db = 30U,
-                                            .slot = 0U,
                                         },
                                         audio_output_};
     CheekoGotchiPresentation presentation_;

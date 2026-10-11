@@ -25,14 +25,12 @@ struct Es7210MicrophoneConfig final {
     // Must match the clock owner's I2S rate.
     uint32_t sample_rate{16000U};
     uint8_t default_gain_db{30U};
-    // I2S slot carrying the wanted microphone: 0 = left (MIC1), 1 = right (MIC2).
-    uint8_t slot{};
 };
 
 // ES7210 ADC as an I2S slave on the RX half of a full-duplex controller whose
-// TX half (the speaker codec sink) drives MCLK/BCLK/WS. The ADC is configured
-// on first Start(); a dedicated task reads RX and hands mono samples to the
-// consumer. While TX is stopped there is no clock and no samples arrive.
+// TX half (the speaker codec sink) drives MCLK/BCLK/WS. The ADC is set up on
+// every Start() and powered down on Stop(); a dedicated task reads RX and
+// hands the average of MIC1 and MIC2 to the consumer. While TX is stopped there is no clock and no samples arrive.
 class Es7210Microphone final : public device::Microphone {
    public:
     Es7210Microphone(Es7210MicrophoneConfig config, I2sCodecAudioSink& clock_owner)
@@ -51,13 +49,14 @@ class Es7210Microphone final : public device::Microphone {
 
     static void TaskEntry(void* argument);
     void Run();
-    [[nodiscard]] esp_err_t ConfigureCodec();
+    [[nodiscard]] esp_err_t WriteRegisters(const uint8_t (*registers)[2], uint32_t count);
+    [[nodiscard]] esp_err_t ConfigureCodec(uint8_t gain_db);
+    [[nodiscard]] esp_err_t PowerDownCodec();
 
     Es7210MicrophoneConfig config_{};
     I2sCodecAudioSink& clock_owner_;
     CodecI2cControl control_{};
     i2c_master_dev_handle_t device_{};
-    const audio_codec_if_t* codec_if_{};
     TaskHandle_t task_{};
     SemaphoreHandle_t idle_{};
     i2s_chan_handle_t rx_{};
