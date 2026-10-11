@@ -135,7 +135,7 @@ class WalkieTalkieApp final {
         height_ = static_cast<int32_t>(info_.height());
         const int32_t margin = width_ * 5 / 100;
         title_ = scene_.CreateLabel({margin, height_ * 3 / 100}, "Walkie-Talkie", kText, SystemFont::kMedium).value();
-        signal_ = scene_.CreateLabel({width_ * 62 / 100, height_ * 3 / 100}, "", kMuted, SystemFont::kSmall).value();
+        signal_ = scene_.CreateLabel({width_ * 62 / 100, height_ * 3 / 100}, " ", kMuted, SystemFont::kSmall).value();
         diameter_ = height_ * 52 / 100;
         button_ = {(width_ - diameter_) / 2, height_ * 16 / 100, diameter_, diameter_};
         micropixel::RoundedRectStyle style{};
@@ -145,11 +145,11 @@ class WalkieTalkieApp final {
         style.radius = static_cast<uint32_t>(diameter_);
         circle_ = scene_.CreateRoundedRect(button_, style).value();
         badge_ = scene_
-                     .CreateLabel({width_ / 2, button_.y + diameter_ / 2 - height_ * 5 / 100}, "", Color::White(),
+                     .CreateLabel({width_ / 2, button_.y + diameter_ / 2 - height_ * 5 / 100}, " ", Color::White(),
                                   SystemFont::kTitle, true)
                      .value();
-        status_ = scene_.CreateLabel({width_ / 2, height_ * 72 / 100}, "", kText, SystemFont::kLarge, true).value();
-        hint_ = scene_.CreateLabel({width_ / 2, height_ * 87 / 100}, "", kMuted, SystemFont::kSmall, true).value();
+        status_ = scene_.CreateLabel({width_ / 2, height_ * 72 / 100}, " ", kText, SystemFont::kLarge, true).value();
+        hint_ = scene_.CreateLabel({width_ / 2, height_ * 87 / 100}, " ", kMuted, SystemFont::kSmall, true).value();
 
         if (!radio_.Start()) {
             fatal_ = "Radio unavailable";
@@ -256,6 +256,7 @@ class WalkieTalkieApp final {
         if (last_release_us_ != 0U && now - last_release_us_ < kDoubleTapUs && !spoke_) {
             SendRing();
             last_release_us_ = 0U;
+            Refresh();
             return;
         }
         if (!microphone_.Start()) {
@@ -290,6 +291,8 @@ class WalkieTalkieApp final {
         }
         talking_ = false;
         (void)microphone_.Stop();
+        app_.log().Info(Text{}.Add("sent ").Number(static_cast<int32_t>(frames_sent_)).Add(" frames").c_str());
+        frames_sent_ = 0U;
         if (send_end && !first_packet_) {
             PacketHeader header{kMagic, kEnd, ++sequence_, 0, 0U, 0U};
             // Three copies: losing the END costs the listener 400 ms of waiting.
@@ -445,6 +448,15 @@ class WalkieTalkieApp final {
         listen_active_ = false;
         playing_ = false;
         jitter_count_ = 0U;
+        app_.log().Info(Text{}
+                            .Add("heard ")
+                            .Number(static_cast<int32_t>(frames_received_))
+                            .Add(" frames, concealed ")
+                            .Number(static_cast<int32_t>(frames_lost_))
+                            .Add(roger ? ", roger" : ", timeout")
+                            .c_str());
+        frames_received_ = 0U;
+        frames_lost_ = 0U;
         if (roger) {
             (void)tones_.Play(kRoger);
         }
@@ -469,7 +481,7 @@ class WalkieTalkieApp final {
             SetButton(kWait, "!");
             status_.SetText(fatal_);
             status_.SetColor(kTalk);
-            hint_.SetText("");
+            hint_.SetText(" ");
         } else if (!state || !state->paired || has_candidate_ || state->pairing) {
             SetButton(kWait, has_candidate_ ? Text{}.Code(candidate_code_).c_str() : "PAIR");
             if (has_candidate_) {
@@ -497,7 +509,7 @@ class WalkieTalkieApp final {
             SetButton(kListen, "RX");
             status_.SetText(now < busy_until_ ? "Busy - they're talking" : "Listening");
             status_.SetColor(kListen);
-            hint_.SetText("");
+            hint_.SetText(" ");
         } else if (now < ringing_until_) {
             SetButton(kWarn, "RING");
             status_.SetText("Ringing!");
@@ -514,7 +526,7 @@ class WalkieTalkieApp final {
         if (state && state->paired && state->peer_present) {
             signal_.SetText(Text{}.Add("ch").Number(state->channel).Add(" ").Number(rssi_).Add("dBm").c_str());
         } else {
-            signal_.SetText("");
+            signal_.SetText(" ");
         }
         (void)app_.renderer().Present(scene_);
     }

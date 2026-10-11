@@ -3,8 +3,9 @@
 # 80 MHz, the 16 MiB partition table and the USB Serial/JTAG console.
 CONFIG_MICROPIXEL_BOARD_CHEEKO_GOTCHI=y
 
-# One 296 x 40 RGB565 strip in internal SRAM feeds the 40 MHz SPI panel.
-CONFIG_MICROPIXEL_LVGL_PARTIAL_BUFFER_HEIGHT=40
+# One 296 x 20 RGB565 strip in internal SRAM feeds the 40 MHz SPI panel; the
+# walkie-talkie needs the other half of it for Wi-Fi, BLE and full-duplex audio.
+CONFIG_MICROPIXEL_LVGL_PARTIAL_BUFFER_HEIGHT=20
 # CONFIG_MICROPIXEL_LVGL_PARTIAL_BUFFER_PSRAM is not set
 
 # Bluetooth LE keyboard for the WisprKey App (push-to-talk for Wispr Flow).
