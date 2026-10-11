@@ -11,6 +11,7 @@
 #include "sdk/gpio.hpp"
 #include "sdk/graphics.hpp"
 #include "sdk/haptics.hpp"
+#include "sdk/hid_keyboard.hpp"
 #include "sdk/input.hpp"
 #include "sdk/launch_arguments.hpp"
 #include "sdk/localization.hpp"
@@ -64,6 +65,9 @@ class Application final {
     [[nodiscard]] constexpr Gpio gpio() const noexcept { return Gpio{Gpio::CapabilityToken{}}; }
     [[nodiscard]] constexpr Haptics haptics() const noexcept { return Haptics{Haptics::CapabilityToken{}}; }
     [[nodiscard]] constexpr PowerInfo power_info() const noexcept { return PowerInfo{PowerInfo::CapabilityToken{}}; }
+    [[nodiscard]] constexpr HidKeyboard hid_keyboard() const noexcept {
+        return HidKeyboard{HidKeyboard::CapabilityToken{}};
+    }
 
     template <typename Handler>
     void Run(Handler&& handler) const {

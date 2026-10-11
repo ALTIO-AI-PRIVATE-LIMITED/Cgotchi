@@ -10,6 +10,7 @@
 #include "device/contracts/board_info.hpp"
 #include "device/contracts/cellular.hpp"
 #include "device/contracts/graphics.hpp"
+#include "device/contracts/hid_keyboard.hpp"
 #include "device/contracts/input.hpp"
 #include "device/contracts/local_control.hpp"
 #include "device/contracts/power.hpp"
@@ -47,6 +48,7 @@ struct PlatformServices final {
     device::Sensors* sensors{};
     device::Gpio* gpio{};
     device::Haptics* haptics{};
+    device::HidKeyboard* hid_keyboard{};
     // Optional dedicated App store medium (NAND, card). Null when the board
     // installs every Bundle into the NOR app_store partition.
     device::BlockStorage* app_storage{};
@@ -79,6 +81,7 @@ class BoardRegistration final {
     void SetCellular(device::Cellular& cellular) { cellular_ = &cellular; }
     void SetPower(device::Power& power) { power_ = &power; }
     void SetLocalControl(device::LocalControl& local_control) { local_control_ = &local_control; }
+    void SetHidKeyboard(device::HidKeyboard& hid_keyboard) { hid_keyboard_ = &hid_keyboard; }
     void SetAppStorage(device::BlockStorage& storage, uint32_t bundle_block_size = 0U, bool removable = false) {
         app_storage_ = &storage;
         app_storage_block_size_ = bundle_block_size;
@@ -113,6 +116,7 @@ class BoardRegistration final {
     device::Cellular* cellular_{};
     device::Power* power_{};
     device::LocalControl* local_control_{};
+    device::HidKeyboard* hid_keyboard_{};
     device::BlockStorage* app_storage_{};
     uint32_t app_storage_block_size_{};
     bool app_storage_removable_{};

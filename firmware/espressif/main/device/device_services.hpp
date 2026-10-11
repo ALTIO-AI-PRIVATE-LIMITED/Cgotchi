@@ -12,6 +12,7 @@
 #include "device/contracts/gpio.hpp"
 #include "device/contracts/graphics.hpp"
 #include "device/contracts/haptics.hpp"
+#include "device/contracts/hid_keyboard.hpp"
 #include "device/contracts/input.hpp"
 #include "device/contracts/random.hpp"
 #include "device/contracts/sensors.hpp"
@@ -91,6 +92,19 @@ class PowerInfoService final {
    private:
     DeviceCatalog& devices_;
     Battery& battery_;
+};
+
+class HidKeyboardService final {
+   public:
+    explicit HidKeyboardService(HidKeyboard& implementation) : implementation_(implementation) {}
+
+    [[nodiscard]] micropixel_hid_keyboard_state_t GetState() const;
+    [[nodiscard]] DeviceResult<void> Start() const;
+    [[nodiscard]] DeviceResult<void> Key(uint8_t usage, bool pressed, uint32_t flags) const;
+    [[nodiscard]] DeviceResult<void> Consumer(uint16_t usage, bool pressed) const;
+
+   private:
+    HidKeyboard& implementation_;
 };
 
 class GraphicsService final {
@@ -180,7 +194,8 @@ class RandomService final {
 class DeviceServices final {
    public:
     DeviceServices(Graphics& graphics, DisplayInfo display, Input& input, Audio& audio, Random& random,
-                   DeviceCatalog& devices, Sensors& sensors, Gpio& gpio, Haptics& haptics, Battery& battery)
+                   DeviceCatalog& devices, Sensors& sensors, Gpio& gpio, Haptics& haptics, Battery& battery,
+                   HidKeyboard& hid_keyboard)
         : graphics_(graphics, display),
           input_(input),
           audio_(audio),
@@ -189,7 +204,8 @@ class DeviceServices final {
           sensors_(sensors),
           gpio_(gpio),
           haptics_(haptics),
-          power_info_(devices, battery) {}
+          power_info_(devices, battery),
+          hid_keyboard_(hid_keyboard) {}
     DeviceServices(const DeviceServices&) = delete;
     DeviceServices& operator=(const DeviceServices&) = delete;
 
@@ -220,6 +236,9 @@ class DeviceServices final {
     [[nodiscard]] PowerInfoService& power_info() {  // NOLINT(readability-identifier-naming)
         return power_info_;
     }
+    [[nodiscard]] HidKeyboardService& hid_keyboard() {  // NOLINT(readability-identifier-naming)
+        return hid_keyboard_;
+    }
 
    private:
     GraphicsService graphics_;
@@ -231,6 +250,7 @@ class DeviceServices final {
     GpioService gpio_;
     HapticsService haptics_;
     PowerInfoService power_info_;
+    HidKeyboardService hid_keyboard_;
 };
 
 }  // namespace micropixel::device

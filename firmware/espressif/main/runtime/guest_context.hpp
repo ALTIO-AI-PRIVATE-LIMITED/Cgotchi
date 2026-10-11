@@ -260,6 +260,14 @@ class GuestContext final {
     [[nodiscard]] device::DeviceResult<micropixel_power_info_t> PowerInfo(micropixel_device_id_t device) {
         return devices_.power_info().Get(device);
     }
+    [[nodiscard]] micropixel_hid_keyboard_state_t HidKeyboardState() { return devices_.hid_keyboard().GetState(); }
+    [[nodiscard]] device::DeviceResult<void> HidKeyboardStart() { return devices_.hid_keyboard().Start(); }
+    [[nodiscard]] device::DeviceResult<void> HidKeyboardKey(uint8_t usage, bool pressed, uint32_t flags) {
+        return devices_.hid_keyboard().Key(usage, pressed, flags);
+    }
+    [[nodiscard]] device::DeviceResult<void> HidKeyboardConsumer(uint16_t usage, bool pressed) {
+        return devices_.hid_keyboard().Consumer(usage, pressed);
+    }
     [[nodiscard]] device::DeviceResult<void> AudioPlayTone(const micropixel_audio_tone_t& tone) const {
         return devices_.audio().PlayTone(tone);
     }
@@ -367,6 +375,7 @@ class GuestContext final {
     GpioServiceEndpoint gpio_endpoint_;
     HapticsServiceEndpoint haptics_endpoint_;
     PowerInfoServiceEndpoint power_info_endpoint_;
+    HidKeyboardServiceEndpoint hid_keyboard_endpoint_;
     ServiceRegistry service_registry_;
     uint32_t core_sequence_{};
     bool suspended_{};

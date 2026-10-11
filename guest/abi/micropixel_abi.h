@@ -52,6 +52,8 @@
 #define MICROPIXEL_HAPTICS_INTERFACE_MINOR 0U
 #define MICROPIXEL_POWER_INTERFACE_MAJOR 1U
 #define MICROPIXEL_POWER_INTERFACE_MINOR 0U
+#define MICROPIXEL_HID_KEYBOARD_INTERFACE_MAJOR 1U
+#define MICROPIXEL_HID_KEYBOARD_INTERFACE_MINOR 0U
 #define MICROPIXEL_DEVICES_LIST_PAGE_SIZE 16U
 #define MICROPIXEL_DEVICE_NAME_MAX_BYTES 39U
 
@@ -105,6 +107,7 @@ typedef enum micropixel_service_id {
     MICROPIXEL_SERVICE_GPIO = 21,
     MICROPIXEL_SERVICE_HAPTICS = 22,
     MICROPIXEL_SERVICE_POWER = 23,
+    MICROPIXEL_SERVICE_HID_KEYBOARD = 24,
 } micropixel_service_id_t;
 
 typedef enum micropixel_service_flag {
@@ -552,6 +555,51 @@ typedef struct micropixel_power_info {
     uint8_t reserved0[3];
     uint32_t reserved1[2];
 } micropixel_power_info_t;
+
+/* Bluetooth LE keyboard presented by the Host to a paired computer. START
+ * powers the radio and advertises; the bond survives App exit and Host
+ * restarts, so a computer reconnects on its own. KEY sends one HID Keyboard
+ * page usage press or release (0x01..0x73, or a modifier 0xE0..0xE7);
+ * APPLE_FN mirrors it on the vendor Fn report. CONSUMER sends one Consumer
+ * page usage (volume, media) press or release. */
+typedef enum micropixel_hid_keyboard_method {
+    MICROPIXEL_HID_KEYBOARD_METHOD_GET_STATE = 1,
+    MICROPIXEL_HID_KEYBOARD_METHOD_START = 2,
+    MICROPIXEL_HID_KEYBOARD_METHOD_KEY = 3,
+    MICROPIXEL_HID_KEYBOARD_METHOD_CONSUMER = 4,
+} micropixel_hid_keyboard_method_t;
+
+typedef enum micropixel_hid_keyboard_state_flag {
+    MICROPIXEL_HID_KEYBOARD_STATE_AVAILABLE = 1U << 0U,
+    MICROPIXEL_HID_KEYBOARD_STATE_STARTED = 1U << 1U,
+    MICROPIXEL_HID_KEYBOARD_STATE_ADVERTISING = 1U << 2U,
+    MICROPIXEL_HID_KEYBOARD_STATE_CONNECTED = 1U << 3U,
+} micropixel_hid_keyboard_state_flag_t;
+
+typedef enum micropixel_hid_keyboard_key_flag {
+    MICROPIXEL_HID_KEYBOARD_KEY_APPLE_FN = 1U << 0U,
+} micropixel_hid_keyboard_key_flag_t;
+
+typedef struct micropixel_hid_keyboard_state {
+    uint16_t size;
+    uint16_t reserved0;
+    uint32_t flags;
+} micropixel_hid_keyboard_state_t;
+
+typedef struct micropixel_hid_keyboard_key_request {
+    uint16_t size;
+    uint8_t usage;
+    uint8_t pressed;
+    uint32_t flags;
+} micropixel_hid_keyboard_key_request_t;
+
+typedef struct micropixel_hid_keyboard_consumer_request {
+    uint16_t size;
+    uint16_t usage;
+    uint8_t pressed;
+    uint8_t reserved0;
+    uint16_t reserved1;
+} micropixel_hid_keyboard_consumer_request_t;
 
 typedef enum micropixel_graphics_method {
     MICROPIXEL_GRAPHICS_METHOD_GET_INFO = 1,
@@ -1744,6 +1792,12 @@ MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_haptics_info_t) == 20U, "micropix
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_haptics_play_request_t) == 16U,
                              "micropixel_haptics_play_request_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_power_info_t) == 24U, "micropixel_power_info_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_hid_keyboard_state_t) == 8U,
+                             "micropixel_hid_keyboard_state_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_hid_keyboard_key_request_t) == 8U,
+                             "micropixel_hid_keyboard_key_request_t ABI size changed");
+MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_hid_keyboard_consumer_request_t) == 8U,
+                             "micropixel_hid_keyboard_consumer_request_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_timer_event_payload_t) == 16U,
                              "micropixel_timer_event_payload_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_touch_event_payload_t) == 16U,
@@ -1787,7 +1841,8 @@ MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_raster_triangle_t) == 36U,
                              "micropixel_raster_triangle_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_raster_quad_t) == 44U, "micropixel_raster_quad_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_raster_span_t) == 28U, "micropixel_raster_span_t ABI size changed");
-MICROPIXEL_ABI_STATIC_ASSERT(offsetof(micropixel_raster_span_t, s) == 12U, "micropixel_raster_span_t.s ABI offset changed");
+MICROPIXEL_ABI_STATIC_ASSERT(offsetof(micropixel_raster_span_t, s) == 12U,
+                             "micropixel_raster_span_t.s ABI offset changed");
 MICROPIXEL_ABI_STATIC_ASSERT(sizeof(micropixel_raster_text_t) == 16U, "micropixel_raster_text_t ABI size changed");
 MICROPIXEL_ABI_STATIC_ASSERT(offsetof(micropixel_raster_text_t, font_handle) == 12U,
                              "micropixel_raster_text_t.font_handle ABI offset changed");

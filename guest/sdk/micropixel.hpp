@@ -12,6 +12,8 @@
 #include "sdk/gpio.hpp"
 #include "sdk/graphics.hpp"
 #include "sdk/haptics.hpp"
+#include "sdk/hid_key_sequence.hpp"
+#include "sdk/hid_keyboard.hpp"
 #include "sdk/input.hpp"
 #include "sdk/launch_arguments.hpp"
 #include "sdk/localization.hpp"

@@ -3,6 +3,7 @@
 #include "runtime/service_binding.hpp"
 #include "sdk/gpio.hpp"
 #include "sdk/haptics.hpp"
+#include "sdk/hid_keyboard.hpp"
 #include "sdk/power_info.hpp"
 #include "sdk/sensors.hpp"
 
@@ -20,6 +21,12 @@ ServiceCache sensors_service;
 ServiceCache gpio_service;
 ServiceCache haptics_service;
 ServiceCache power_info_service;
+ServiceCache hid_keyboard_service;
+
+int32_t OpenHidKeyboardService() {
+    return OpenService(hid_keyboard_service, MICROPIXEL_SERVICE_HID_KEYBOARD, MICROPIXEL_HID_KEYBOARD_INTERFACE_MAJOR,
+                       MICROPIXEL_HID_KEYBOARD_INTERFACE_MINOR);
+}
 
 }  // namespace
 
@@ -476,6 +483,64 @@ Result<PowerState> PowerInfo::Get(DeviceId device) const {
                       (response.flags & MICROPIXEL_POWER_STATE_CHARGING) != 0U,
                       (response.flags & MICROPIXEL_POWER_STATE_DISCHARGING) != 0U,
                       (response.flags & MICROPIXEL_POWER_STATE_EXTERNAL_CONNECTED) != 0U};
+}
+
+Result<HidKeyboardState> HidKeyboard::State() const {
+    int32_t status = OpenHidKeyboardService();
+    if (status != MICROPIXEL_STATUS_OK) {
+        return unexpected(ErrorFromStatus(status));
+    }
+    micropixel_hid_keyboard_state_t response{};
+    uint32_t response_size = 0U;
+    status = CallService(hid_keyboard_service, MICROPIXEL_HID_KEYBOARD_METHOD_GET_STATE, nullptr, 0U, &response,
+                         sizeof(response), response_size);
+    if (status != MICROPIXEL_STATUS_OK) {
+        return unexpected(ErrorFromStatus(status));
+    }
+    constexpr uint32_t kKnownFlags = MICROPIXEL_HID_KEYBOARD_STATE_AVAILABLE | MICROPIXEL_HID_KEYBOARD_STATE_STARTED |
+                                     MICROPIXEL_HID_KEYBOARD_STATE_ADVERTISING |
+                                     MICROPIXEL_HID_KEYBOARD_STATE_CONNECTED;
+    if (response_size < sizeof(response) || response.size < sizeof(response) || response.reserved0 != 0U ||
+        (response.flags & ~kKnownFlags) != 0U) {
+        runtime::Panic("hid_keyboard.state.response", MICROPIXEL_STATUS_INTERNAL);
+    }
+    return HidKeyboardState{(response.flags & MICROPIXEL_HID_KEYBOARD_STATE_AVAILABLE) != 0U,
+                            (response.flags & MICROPIXEL_HID_KEYBOARD_STATE_STARTED) != 0U,
+                            (response.flags & MICROPIXEL_HID_KEYBOARD_STATE_ADVERTISING) != 0U,
+                            (response.flags & MICROPIXEL_HID_KEYBOARD_STATE_CONNECTED) != 0U};
+}
+
+Result<void> HidKeyboard::Start() const {
+    int32_t status = OpenHidKeyboardService();
+    if (status == MICROPIXEL_STATUS_OK) {
+        status = CallVoid(hid_keyboard_service, MICROPIXEL_HID_KEYBOARD_METHOD_START, nullptr, 0U);
+    }
+    return status == MICROPIXEL_STATUS_OK ? Result<void>{} : Result<void>{unexpected(ErrorFromStatus(status))};
+}
+
+Result<void> HidKeyboard::Key(HidKeyUsage usage, bool pressed, bool apple_fn) const {
+    int32_t status = OpenHidKeyboardService();
+    if (status == MICROPIXEL_STATUS_OK) {
+        micropixel_hid_keyboard_key_request_t request{};
+        request.size = sizeof(request);
+        request.usage = static_cast<uint8_t>(usage);
+        request.pressed = pressed ? 1U : 0U;
+        request.flags = apple_fn ? static_cast<uint32_t>(MICROPIXEL_HID_KEYBOARD_KEY_APPLE_FN) : 0U;
+        status = CallVoid(hid_keyboard_service, MICROPIXEL_HID_KEYBOARD_METHOD_KEY, &request, sizeof(request));
+    }
+    return status == MICROPIXEL_STATUS_OK ? Result<void>{} : Result<void>{unexpected(ErrorFromStatus(status))};
+}
+
+Result<void> HidKeyboard::Consumer(HidConsumerUsage usage, bool pressed) const {
+    int32_t status = OpenHidKeyboardService();
+    if (status == MICROPIXEL_STATUS_OK) {
+        micropixel_hid_keyboard_consumer_request_t request{};
+        request.size = sizeof(request);
+        request.usage = static_cast<uint16_t>(usage);
+        request.pressed = pressed ? 1U : 0U;
+        status = CallVoid(hid_keyboard_service, MICROPIXEL_HID_KEYBOARD_METHOD_CONSUMER, &request, sizeof(request));
+    }
+    return status == MICROPIXEL_STATUS_OK ? Result<void>{} : Result<void>{unexpected(ErrorFromStatus(status))};
 }
 
 }  // namespace micropixel

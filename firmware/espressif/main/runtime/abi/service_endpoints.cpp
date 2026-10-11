@@ -308,6 +308,50 @@ int32_t PowerInfoServiceEndpoint::Call(uint32_t method_id, const uint8_t* reques
                                                 response_size_out);
 }
 
+ServiceDescriptor HidKeyboardServiceEndpoint::Describe() const {
+    return ServiceDescriptor{
+        .service_id = MICROPIXEL_SERVICE_HID_KEYBOARD,
+        .interface_major = MICROPIXEL_HID_KEYBOARD_INTERFACE_MAJOR,
+        .interface_minor = MICROPIXEL_HID_KEYBOARD_INTERFACE_MINOR,
+        .flags = MICROPIXEL_SERVICE_FLAG_CALL,
+        .max_request_bytes = sizeof(micropixel_hid_keyboard_key_request_t),
+        .max_response_bytes = sizeof(micropixel_hid_keyboard_state_t),
+    };
+}
+
+int32_t HidKeyboardServiceEndpoint::Call(uint32_t method_id, const uint8_t* request, uint32_t request_size,
+                                         uint8_t* response, uint32_t response_capacity, uint32_t& response_size_out) {
+    if (method_id == MICROPIXEL_HID_KEYBOARD_METHOD_GET_STATE) {
+        if (request_size != 0U) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return WriteValue(context_.HidKeyboardState(), response, response_capacity, response_size_out);
+    }
+    if (method_id == MICROPIXEL_HID_KEYBOARD_METHOD_START) {
+        if (request_size != 0U) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return ResultStatus(context_.HidKeyboardStart());
+    }
+    if (method_id == MICROPIXEL_HID_KEYBOARD_METHOD_KEY) {
+        micropixel_hid_keyboard_key_request_t wire{};
+        if (!ReadRequest(request, request_size, wire) || wire.pressed > 1U ||
+            (wire.flags & ~static_cast<uint32_t>(MICROPIXEL_HID_KEYBOARD_KEY_APPLE_FN)) != 0U) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return ResultStatus(context_.HidKeyboardKey(wire.usage, wire.pressed != 0U, wire.flags));
+    }
+    if (method_id == MICROPIXEL_HID_KEYBOARD_METHOD_CONSUMER) {
+        micropixel_hid_keyboard_consumer_request_t wire{};
+        if (!ReadRequest(request, request_size, wire) || wire.pressed > 1U || wire.usage == 0U ||
+            wire.reserved1 != 0U) {
+            return MICROPIXEL_STATUS_INVALID_ARGUMENT;
+        }
+        return ResultStatus(context_.HidKeyboardConsumer(wire.usage, wire.pressed != 0U));
+    }
+    return MICROPIXEL_STATUS_UNSUPPORTED;
+}
+
 SystemServiceEndpoint::SystemServiceEndpoint(std::string_view effective_locale,
                                              const micropixel_system_launch_arguments_response_t& launch_arguments)
     : launch_arguments_(launch_arguments) {

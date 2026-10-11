@@ -133,6 +133,23 @@ void HapticsService::SetCompletionSink(HapticCompletionSink sink, void* context)
     implementation_.SetCompletionSink(sink, context);
 }
 
+micropixel_hid_keyboard_state_t HidKeyboardService::GetState() const {
+    micropixel_hid_keyboard_state_t state{};
+    state.size = sizeof(state);
+    state.flags = implementation_.StateFlags();
+    return state;
+}
+
+DeviceResult<void> HidKeyboardService::Start() const { return StatusResult(implementation_.Start()); }
+
+DeviceResult<void> HidKeyboardService::Key(uint8_t usage, bool pressed, uint32_t flags) const {
+    return StatusResult(implementation_.Key(usage, pressed, flags));
+}
+
+DeviceResult<void> HidKeyboardService::Consumer(uint16_t usage, bool pressed) const {
+    return StatusResult(implementation_.Consumer(usage, pressed));
+}
+
 DeviceResult<micropixel_power_info_t> PowerInfoService::Get(micropixel_device_id_t device) {
     micropixel_device_info_t device_info{};
     const int32_t device_status = devices_.GetById(device, device_info);

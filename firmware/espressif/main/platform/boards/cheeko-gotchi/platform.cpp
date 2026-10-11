@@ -17,6 +17,7 @@
 #include "platform/adapters/graphics_adapter.hpp"
 #include "platform/audio/audio_engine.hpp"
 #include "platform/audio/es8311_i2s_audio_sink.hpp"
+#include "platform/bluetooth/ble_hid_keyboard.hpp"
 #include "platform/boards/cheeko-gotchi/board_config.hpp"
 #include "platform/boards/cheeko-gotchi/board_hardware.hpp"
 #include "platform/boards/cheeko-gotchi/display_hardware.hpp"
@@ -273,6 +274,7 @@ class CheekoGotchiBoard final : public Board {
         registration.SetWifi(wifi_);
         registration.SetLocalControl(state_.local_control);
         registration.SetSystemUi(system_ui_);
+        registration.SetHidKeyboard(hid_keyboard_);
         bool registered = true;
         if (sensors_.acceleration_available()) {
             registered = registration.AddSensor(sensors_, board_detail::SensorPeripheral::kAcceleration,
@@ -282,6 +284,11 @@ class CheekoGotchiBoard final : public Board {
         ESP_LOGI(kTag, "ready: JD9853 + %s, native Wi-Fi, audio=%s, accel=%s",
                  touch_status == ESP_OK ? "CST810" : "no touch", audio_status == ESP_OK ? "ES8311" : "off",
                  sensors_.acceleration_available() ? "on" : "off");
+        // Keep the keyboard pairable from boot, not only while its App is
+        // open, so a computer can find and reconnect to it at any time.
+        if (hid_keyboard_.Start() != MICROPIXEL_STATUS_OK) {
+            ESP_LOGW(kTag, "Bluetooth keyboard unavailable for this boot");
+        }
         return registered && context.Publish(registration) ? ESP_OK : ESP_ERR_INVALID_STATE;
     }
 
@@ -340,6 +347,8 @@ class CheekoGotchiBoard final : public Board {
         KeyConfig(board_detail::board::kVolumeUpButton, device::KeyCode::kRight, "gotchi_vol_up")};
     wifi::NativeWifiRadio wifi_radio_{};
     wifi::WifiManager wifi_{wifi_radio_};
+    // Shared by the WisprKey and Chat Remote Apps; started at boot.
+    bluetooth::BleHidKeyboard hid_keyboard_{"CGotchi"};
 };
 
 }  // namespace
