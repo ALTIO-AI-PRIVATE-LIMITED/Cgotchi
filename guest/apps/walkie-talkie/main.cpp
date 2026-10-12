@@ -45,11 +45,18 @@ constexpr uint64_t kListenTimeoutUs = 400000U;
 constexpr uint64_t kDoubleTapUs = 350000U;
 // Analog mic gain; the board default (30 dB) leaves speech from arm's length
 // near -50 dBFS while the noise floor sits near -70 dBFS.
-constexpr uint8_t kMicGainDb = 36U;
+constexpr uint8_t kMicGainDb = 33U;
 // Talker-side automatic gain: lift quiet speech toward kAgcTargetPeak, at
-// most kAgcMaxGain times, backing off at once on loud frames.
+// most 2x, backing off at once on loud frames. More gain than this makes two
+// Gotchis in the same room howl (listener speaker -> talker mic).
 constexpr int32_t kAgcTargetPeak = 12000;
-constexpr uint32_t kAgcMaxGainQ8 = 4U * 256U;
+constexpr uint32_t kAgcMaxGainQ8 = 2U * 256U;
+// Howl guard: feedback holds the raw mic near full scale without the gaps
+// speech has. After kHowlFrames such frames in a row the talker halves its
+// level, down to 1/8, and recovers once the mic calms down.
+constexpr int32_t kHowlPeak = 20000;
+constexpr uint32_t kHowlFrames = 8U;
+constexpr uint32_t kHowlMaxShift = 3U;
 // Diagnostic: log every received audio packet as hex so the exact audio the
 // listener played can be rebuilt off-device.
 constexpr bool kDumpPackets = false;
@@ -281,6 +288,8 @@ class WalkieTalkieApp final {
         pending_ = 0U;
         encoder_ = {};
         agc_gain_q8_ = 256U;
+        loud_frames_ = 0U;
+        howl_shift_ = 0U;
         sent_trace_.Reset();
         first_packet_ = true;
         (void)tones_.Play(kTalkPermit);
@@ -348,6 +357,7 @@ class WalkieTalkieApp final {
             header.index = encoder_.index;
             std::memcpy(packet, &header, sizeof(header));
             ApplyAgc(capture_, kFrameSamples);
+            NoteLevel(capture_, kFrameSamples);
             sent_trace_.Add(capture_, kFrameSamples);
             walkie::Encode(encoder_, capture_, kFrameSamples, packet + sizeof(header));
             if (radio_.Send(packet, sizeof(packet))) {
@@ -363,6 +373,25 @@ class WalkieTalkieApp final {
             const int32_t magnitude = samples[index] < 0 ? -samples[index] : samples[index];
             peak = magnitude > peak ? magnitude : peak;
         }
+        if (peak >= kHowlPeak) {
+            if (++loud_frames_ >= kHowlFrames && howl_shift_ < kHowlMaxShift) {
+                ++howl_shift_;
+                loud_frames_ = 0U;
+                app_.log().Warning("howl guard: lowering talk level");
+            }
+        } else {
+            loud_frames_ = 0U;
+            if (peak < kHowlPeak / 4 && howl_shift_ > 0U) {
+                --howl_shift_;
+            }
+        }
+        if (howl_shift_ != 0U) {
+            for (uint32_t index = 0U; index < count; ++index) {
+                samples[index] = static_cast<int16_t>(samples[index] >> howl_shift_);
+            }
+            peak >>= howl_shift_;
+            agc_gain_q8_ = 256U;
+        }
         const uint32_t wanted = static_cast<uint32_t>(kAgcTargetPeak) * 256U / static_cast<uint32_t>(peak);
         if (wanted < agc_gain_q8_) {
             agc_gain_q8_ = wanted < 256U ? 256U : wanted;  // Back off at once.
@@ -375,6 +404,31 @@ class WalkieTalkieApp final {
             value = value > 32767 ? 32767 : (value < -32768 ? -32768 : value);
             samples[index] = static_cast<int16_t>(value);
         }
+    }
+
+    // Peak of the frames sent since the last redraw, for the talk meter.
+    void NoteLevel(const int16_t* samples, uint32_t count) {
+        for (uint32_t index = 0U; index < count; ++index) {
+            const int32_t magnitude = samples[index] < 0 ? -samples[index] : samples[index];
+            level_peak_ = magnitude > level_peak_ ? magnitude : level_peak_;
+        }
+    }
+
+    [[nodiscard]] const char* LevelMeter() {
+        // 0..10 bars on a rough dB scale: each bar is about 3.5 dB.
+        uint32_t bars = 0U;
+        for (int32_t threshold = 300; threshold <= level_peak_ && bars < 10U; threshold = threshold * 3 / 2) {
+            ++bars;
+        }
+        level_peak_ = 0;
+        meter_ = Text{}.Add("Mic ");
+        for (uint32_t bar = 0U; bar < 10U; ++bar) {
+            meter_.Add(bar < bars ? "|" : ".");
+        }
+        if (howl_shift_ != 0U) {
+            meter_.Add("  too close?");
+        }
+        return meter_.c_str();
     }
 
     void Drain() {
@@ -559,7 +613,7 @@ class WalkieTalkieApp final {
             SetButton(kTalk, "TALK");
             status_.SetText("Talking");
             status_.SetColor(kTalk);
-            hint_.SetText("Release to send roger");
+            hint_.SetText(LevelMeter());
         } else if (Listening()) {
             SetButton(kListen, "RX");
             status_.SetText(now < busy_until_ ? "Busy - they're talking" : "Listening");
@@ -622,6 +676,10 @@ class WalkieTalkieApp final {
     walkie::AdpcmState encoder_{};
     walkie::ToneTrace sent_trace_;
     uint32_t agc_gain_q8_{256U};
+    uint32_t loud_frames_{};
+    int32_t level_peak_{};
+    Text meter_;
+    uint32_t howl_shift_{};
     walkie::ToneTrace heard_trace_;
     uint32_t frames_sent_{};
     // Listening.

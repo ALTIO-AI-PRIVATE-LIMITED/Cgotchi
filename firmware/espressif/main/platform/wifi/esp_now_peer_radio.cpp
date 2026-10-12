@@ -458,7 +458,8 @@ void EspNowPeerRadio::UpdateChannel(int64_t now_us) {
     (void)xSemaphoreTake(mutex_, portMAX_DELAY);
     wifi_channel_ = associated;
     const bool present = paired_ && peer_heard_us_ != 0 && now_us - peer_heard_us_ < kPresenceTimeoutUs;
-    const bool searching = (paired_ && !present) || pairing_until_us_ > now_us;
+    // Never leave a peer that is being heard, even while pairing again.
+    const bool searching = !present && (paired_ || pairing_until_us_ > now_us);
     (void)xSemaphoreGive(mutex_);
     if (associated) {
         desired = ap_channel_.load(std::memory_order_relaxed);
