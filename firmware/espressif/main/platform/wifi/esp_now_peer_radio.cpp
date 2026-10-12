@@ -29,6 +29,11 @@ constexpr uint8_t kRendezvousChannel = 1U;
 constexpr uint8_t kMaxChannel = 13U;
 constexpr int64_t kBeaconIntervalUs = 250000;
 constexpr int64_t kPresenceTimeoutUs = 2000000;
+// A weak link loses packets in bursts; leaving the channel then breaks it for
+// good. Only search after the peer has been silent this long.
+constexpr int64_t kSearchAfterUs = 15000000;
+// 20 dBm, the S3's maximum (units of 0.25 dBm).
+constexpr int8_t kMaxTxPowerQuarterDbm = 80;
 constexpr int64_t kRendezvousDwellUs = 600000;
 constexpr int64_t kSweepDwellUs = 300000;
 constexpr int64_t kPairingWindowUs = 60000000;
@@ -240,6 +245,7 @@ int32_t EspNowPeerRadio::Start(const device::PeerRadioCallbacks& callbacks) {
     (void)xSemaphoreGive(mutex_);
     // Modem sleep would drop ESP-NOW frames between beacons while associated.
     const esp_err_t ps_status = esp_wifi_set_ps(WIFI_PS_NONE);
+    (void)esp_wifi_set_max_tx_power(kMaxTxPowerQuarterDbm);
     ESP_LOGI(kTag, "started on channel %u (power save off: %s), internal free %u, DMA largest %u", channel_,
              esp_err_to_name(ps_status), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)));
@@ -457,9 +463,9 @@ void EspNowPeerRadio::UpdateChannel(int64_t now_us) {
     const bool associated = associated_.load(std::memory_order_acquire);
     (void)xSemaphoreTake(mutex_, portMAX_DELAY);
     wifi_channel_ = associated;
-    const bool present = paired_ && peer_heard_us_ != 0 && now_us - peer_heard_us_ < kPresenceTimeoutUs;
-    // Never leave a peer that is being heard, even while pairing again.
-    const bool searching = !present && (paired_ || pairing_until_us_ > now_us);
+    const bool recently_heard = paired_ && peer_heard_us_ != 0 && now_us - peer_heard_us_ < kSearchAfterUs;
+    // Never leave a peer heard recently, even while pairing again.
+    const bool searching = !recently_heard && (paired_ || pairing_until_us_ > now_us);
     (void)xSemaphoreGive(mutex_);
     if (associated) {
         desired = ap_channel_.load(std::memory_order_relaxed);

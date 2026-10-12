@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Walkie-Talkie: push-to-talk voice between two paired Gotchis over the Peer
-// Radio (ESP-NOW). Half duplex, 16 kHz IMA ADPCM in 20 ms packets, a 60 ms
+// Radio (ESP-NOW). Half duplex, 16 kHz G.711 mu-law in 10 ms packets, an 80 ms
 // jitter buffer on the listening side and a roger beep when the talker lets go.
+// The talker high-passes, noise-gates and levels the mic before encoding.
 //
 // Controls: hold VOL+ (or the TALK circle) to talk; double-tap to ring the
 // other Gotchi. VOL- steps the volume. BOOT pairs: press it on both, check
@@ -12,8 +13,8 @@
 #include <cstring>
 #include <optional>
 
-#include "ima_adpcm.hpp"
 #include "tone_trace.hpp"
+#include "voice.hpp"
 #include "sdk/micropixel.hpp"
 
 namespace {
@@ -36,9 +37,11 @@ constexpr Color kWait = Color::Rgb(90U, 96U, 110U);
 constexpr Color kWarn = Color::Rgb(250U, 166U, 26U);
 
 constexpr uint32_t kSampleRate = 16000U;
-constexpr uint32_t kFrameSamples = 320U;  // 20 ms
-constexpr uint32_t kFrameBytes = kFrameSamples / 2U;
-constexpr uint32_t kJitterFrames = 3U;  // 60 ms before playback starts
+constexpr uint32_t kFrameSamples = 160U;  // 10 ms
+constexpr uint32_t kFrameBytes = kFrameSamples;  // mu-law: one byte per sample
+constexpr uint32_t kJitterFrames = 8U;  // 80 ms before playback starts
+// Lost frames concealed by fading the last good one; beyond this, silence.
+constexpr int16_t kMaxConcealFrames = 3;
 constexpr uint32_t kStreamCapacity = 2048U;
 // A talker that goes quiet this long without END has gone (out of range).
 constexpr uint64_t kListenTimeoutUs = 400000U;
@@ -55,7 +58,7 @@ constexpr uint32_t kAgcMaxGainQ8 = 2U * 256U;
 // speech has. After kHowlFrames such frames in a row the talker halves its
 // level, down to 1/8, and recovers once the mic calms down.
 constexpr int32_t kHowlPeak = 20000;
-constexpr uint32_t kHowlFrames = 8U;
+constexpr uint32_t kHowlFrames = 16U;
 constexpr uint32_t kHowlMaxShift = 3U;
 // Diagnostic: log every received audio packet as hex so the exact audio the
 // listener played can be rebuilt off-device.
@@ -73,9 +76,6 @@ struct PacketHeader final {
     uint8_t magic;
     uint8_t flags;
     uint16_t sequence;
-    int16_t predictor;
-    uint8_t index;
-    uint8_t reserved;
 };
 static_assert(sizeof(PacketHeader) + kFrameBytes <= micropixel::PeerRadio::kMaxPayload);
 
@@ -251,9 +251,11 @@ class WalkieTalkieApp final {
         }
     }
 
+    // Talking needs a pairing, not a strong link: a weak link still carries
+    // most packets, and the radio stays on the peer's channel for 15 s.
     [[nodiscard]] bool Linked() const {
         const auto state = radio_.State();
-        return state && state->paired && state->peer_present;
+        return state && state->paired;
     }
 
     void Press() {
@@ -286,7 +288,8 @@ class WalkieTalkieApp final {
         spoke_ = false;
         pressed_at_us_ = now;
         pending_ = 0U;
-        encoder_ = {};
+        high_pass_.Reset();
+        gate_.Reset();
         agc_gain_q8_ = 256U;
         loud_frames_ = 0U;
         howl_shift_ = 0U;
@@ -317,7 +320,7 @@ class WalkieTalkieApp final {
         app_.log().Info(sent_trace_.c_str());
         frames_sent_ = 0U;
         if (send_end && !first_packet_) {
-            PacketHeader header{kMagic, kEnd, ++sequence_, 0, 0U, 0U};
+            PacketHeader header{kMagic, kEnd, ++sequence_};
             // Three copies: losing the END costs the listener 400 ms of waiting.
             for (uint32_t copy = 0U; copy < 3U; ++copy) {
                 (void)radio_.Send(&header, sizeof(header));
@@ -326,7 +329,7 @@ class WalkieTalkieApp final {
     }
 
     void SendRing() {
-        PacketHeader header{kMagic, kRing, ++sequence_, 0, 0U, 0U};
+        PacketHeader header{kMagic, kRing, ++sequence_};
         for (uint32_t copy = 0U; copy < 3U; ++copy) {
             (void)radio_.Send(&header, sizeof(header));
         }
@@ -353,13 +356,15 @@ class WalkieTalkieApp final {
             header.magic = kMagic;
             header.flags = static_cast<uint8_t>(kAudio | (first_packet_ ? kStart : 0U));
             header.sequence = ++sequence_;
-            header.predictor = encoder_.predictor;
-            header.index = encoder_.index;
             std::memcpy(packet, &header, sizeof(header));
+            high_pass_.Process(capture_, kFrameSamples);
+            gate_.Process(capture_, kFrameSamples);
             ApplyAgc(capture_, kFrameSamples);
             NoteLevel(capture_, kFrameSamples);
             sent_trace_.Add(capture_, kFrameSamples);
-            walkie::Encode(encoder_, capture_, kFrameSamples, packet + sizeof(header));
+            for (uint32_t index = 0U; index < kFrameSamples; ++index) {
+                packet[sizeof(header) + index] = walkie::MuLawEncode(capture_[index]);
+            }
             if (radio_.Send(packet, sizeof(packet))) {
                 ++frames_sent_;
             }
@@ -395,8 +400,9 @@ class WalkieTalkieApp final {
         const uint32_t wanted = static_cast<uint32_t>(kAgcTargetPeak) * 256U / static_cast<uint32_t>(peak);
         if (wanted < agc_gain_q8_) {
             agc_gain_q8_ = wanted < 256U ? 256U : wanted;  // Back off at once.
-        } else {
-            agc_gain_q8_ += agc_gain_q8_ / 32U + 1U;  // About +6 dB per 0.5 s.
+        } else if (gate_.open()) {
+            // Only speech may raise the gain; pauses hold it.
+            agc_gain_q8_ += agc_gain_q8_ / 64U + 1U;  // About +6 dB per 0.5 s.
         }
         agc_gain_q8_ = agc_gain_q8_ > kAgcMaxGainQ8 ? kAgcMaxGainQ8 : agc_gain_q8_;
         for (uint32_t index = 0U; index < count; ++index) {
@@ -487,7 +493,7 @@ class WalkieTalkieApp final {
             return;
         }
         // Conceal up to two lost frames by fading the last good one.
-        for (int16_t missing = 0; missing < ahead && missing < 2; ++missing) {
+        for (int16_t missing = 0; missing < ahead && missing < kMaxConcealFrames; ++missing) {
             for (uint32_t index = 0U; index < kFrameSamples; ++index) {
                 last_frame_[index] = static_cast<int16_t>(last_frame_[index] / 2);
             }
@@ -509,8 +515,9 @@ class WalkieTalkieApp final {
             line[sizeof(line) - 1U] = '\0';
             app_.log().Info(line);
         }
-        walkie::AdpcmState state{header.predictor, header.index};
-        walkie::Decode(state, payload, kFrameSamples, last_frame_);
+        for (uint32_t index = 0U; index < kFrameSamples; ++index) {
+            last_frame_[index] = walkie::MuLawDecode(payload[index]);
+        }
         heard_trace_.Add(last_frame_, kFrameSamples);
         const uint32_t gain = kVolumeLevels[volume_];
         for (uint32_t index = 0U; index < kFrameSamples; ++index) {
@@ -604,11 +611,6 @@ class WalkieTalkieApp final {
                 hint_.SetText("Press BOOT on both Gotchis");
             }
             status_.SetColor(kWarn);
-        } else if (!state->peer_present) {
-            SetButton(kWait, "...");
-            status_.SetText("Searching");
-            status_.SetColor(kWarn);
-            hint_.SetText("Turn on the other Gotchi");
         } else if (talking_) {
             SetButton(kTalk, "TALK");
             status_.SetText("Talking");
@@ -624,6 +626,11 @@ class WalkieTalkieApp final {
             status_.SetText("Ringing!");
             status_.SetColor(kWarn);
             hint_.SetText("Hold VOL+ to answer");
+        } else if (!state->peer_present) {
+            SetButton(kIdle, "TALK");
+            status_.SetText("No signal");
+            status_.SetColor(kWarn);
+            hint_.SetText("Out of range? Hold VOL+ to try anyway");
         } else {
             SetButton(kIdle, "TALK");
             status_.SetText(now < rang_until_ ? "Rang them" : "Ready");
@@ -673,7 +680,8 @@ class WalkieTalkieApp final {
     uint16_t sequence_{};
     uint32_t pending_{};
     int16_t capture_[kFrameSamples]{};
-    walkie::AdpcmState encoder_{};
+    walkie::HighPass high_pass_;
+    walkie::NoiseGate gate_;
     walkie::ToneTrace sent_trace_;
     uint32_t agc_gain_q8_{256U};
     uint32_t loud_frames_{};

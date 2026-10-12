@@ -60,7 +60,7 @@ class ToneTrace final {
         return previous * previous + before * before - coefficient * previous * before;
     }
 
-    char text_[200]{};
+    char text_[520]{};
     uint32_t length_{};
 };
 
