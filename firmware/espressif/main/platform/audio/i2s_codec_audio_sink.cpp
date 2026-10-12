@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstring>
 
+#include "driver/i2s_tdm.h"
 #include "esp_check.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_heap_caps.h"
@@ -113,12 +114,27 @@ esp_err_t I2sCodecAudioSink::Initialize() {
         return FailInitialization(status);
     }
     if (rx != nullptr) {
-        // Same clock as TX, which drives BCLK/WS; the ADC codec is a slave.
-        i2s_std_config_t input_config = standard_config;
-        input_config.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+        // TDM, four 16-bit slots, as the Cheeko Gotchi factory firmware reads
+        // its ES7210: in plain two-slot I2S the ADC fills only one frame in
+        // eight. TX drives BCLK/WS; the ADC and this RX half are slaves.
+        i2s_tdm_config_t input_config{};
+        input_config.clk_cfg = I2S_TDM_CLK_DEFAULT_CONFIG(config_.sample_rate);
+        input_config.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+        input_config.clk_cfg.bclk_div = 8U;
+        input_config.slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(
+            I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO,
+            static_cast<i2s_tdm_slot_mask_t>(I2S_TDM_SLOT0 | I2S_TDM_SLOT1 | I2S_TDM_SLOT2 | I2S_TDM_SLOT3));
+        // Exactly what esp_codec_dev programs for the factory firmware: four
+        // slots, left aligned, WS high for half of the 64-bit frame.
+        input_config.slot_cfg.total_slot = 4U;
+        input_config.slot_cfg.left_align = true;
+        input_config.slot_cfg.ws_width = 32U;
+        input_config.gpio_cfg.mclk = config_.master_clock;
+        input_config.gpio_cfg.bclk = config_.bit_clock;
+        input_config.gpio_cfg.ws = config_.word_select;
         input_config.gpio_cfg.dout = I2S_GPIO_UNUSED;
         input_config.gpio_cfg.din = config_.data_in;
-        status = i2s_channel_init_std_mode(rx, &input_config);
+        status = i2s_channel_init_tdm_mode(rx, &input_config);
         if (status != ESP_OK) {
             (void)i2s_del_channel(rx);
             return FailInitialization(status);
@@ -173,6 +189,19 @@ esp_err_t I2sCodecAudioSink::Initialize() {
         return FailInitialization(status == ESP_OK ? ESP_FAIL : status);
     }
     output_enabled_ = false;
+    if (rx_.load(std::memory_order_acquire) != nullptr) {
+        // The four-slot TDM capture needs 64 bit clocks per frame, and TX owns
+        // the clock: carry the 16-bit playback in 32-bit slots, as
+        // esp_codec_dev does for the factory firmware when its input opens.
+        i2s_std_slot_config_t wide_slots = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
+            I2S_DATA_BIT_WIDTH_16BIT, config_.output_channels == 1U ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO);
+        wide_slots.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+        wide_slots.ws_width = 32U;
+        status = i2s_channel_reconfig_std_slot(tx_, &wide_slots);
+        if (status != ESP_OK) {
+            return FailInitialization(status);
+        }
+    }
     ESP_LOGI(config_.log_tag, "%s ready at I2C 0x%02x, %lu Hz %s I2S", config_.name, config_.codec_i2c_address,
              static_cast<unsigned long>(config_.sample_rate), config_.output_channels == 1U ? "mono" : "stereo");
     return ESP_OK;

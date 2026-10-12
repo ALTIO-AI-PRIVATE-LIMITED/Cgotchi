@@ -32,8 +32,8 @@ struct I2sCodecAudioConfig final {
     gpio_num_t word_select{GPIO_NUM_NC};
     gpio_num_t data_out{GPIO_NUM_NC};
     // Optional ADC data line. When set, the same controller also gets a 16-bit
-    // stereo RX channel clocked by TX (full duplex) for a separate microphone
-    // codec; it is only clocked while TX runs.
+    // four-slot TDM RX channel clocked by TX (full duplex) for a separate
+    // microphone codec; it is only clocked while TX runs.
     gpio_num_t data_in{GPIO_NUM_NC};
     gpio_num_t amplifier_enable{GPIO_NUM_NC};
     AmplifierSetter amplifier_setter{};

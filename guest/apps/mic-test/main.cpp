@@ -61,6 +61,8 @@ enum class Mode : uint8_t { kIdle, kCue, kRecording, kPlaying };
 // most kMaxBoost: a speaking voice records ~30 dB under full scale.
 constexpr int32_t kTargetPeak = 26000;
 constexpr int32_t kMaxBoost = 16;
+// Diagnostic: log the raw take as hex (160 samples per line) after recording.
+constexpr bool kDumpTake = false;
 
 class MicTestApp final {
    public:
@@ -197,6 +199,9 @@ class MicTestApp final {
         if (recorded_ >= kRecordSamples) {
             (void)microphone_.Stop();
             const Duration elapsed = app_.clock().Now() - started_at_;
+            if (kDumpTake) {
+                DumpTake();
+            }
             int32_t boost = peak_ > 0 ? kTargetPeak / peak_ : kMaxBoost;
             boost = boost < 1 ? 1 : (boost > kMaxBoost ? kMaxBoost : boost);
             for (uint32_t index = 0U; index < kRecordSamples; ++index) {
@@ -216,6 +221,25 @@ class MicTestApp final {
             StartPlayback();
         }
         Present();
+    }
+
+    void DumpTake() {
+        constexpr char kHex[] = "0123456789abcdef";
+        constexpr uint32_t kPerLine = 160U;
+        char line[2U + kPerLine * 4U + 1U];
+        for (uint32_t start = 0U; start < kRecordSamples; start += kPerLine) {
+            line[0] = 'S';
+            line[1] = ' ';
+            for (uint32_t index = 0U; index < kPerLine; ++index) {
+                const uint16_t value = static_cast<uint16_t>(recording[start + index]);
+                line[2U + index * 4U] = kHex[(value >> 12U) & 15U];
+                line[3U + index * 4U] = kHex[(value >> 8U) & 15U];
+                line[4U + index * 4U] = kHex[(value >> 4U) & 15U];
+                line[5U + index * 4U] = kHex[value & 15U];
+            }
+            line[sizeof(line) - 1U] = '\0';
+            app_.log().Info(line);
+        }
     }
 
     void StartPlayback() {

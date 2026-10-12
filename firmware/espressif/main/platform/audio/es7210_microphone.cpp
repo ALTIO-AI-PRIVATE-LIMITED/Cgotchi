@@ -1,8 +1,11 @@
 #include "platform/audio/es7210_microphone.hpp"
 
+#include <cstdio>
 #include <cstdlib>
 
 #include <algorithm>
+
+#include "es7210_adc.h"
 #include "esp_check.h"
 #include "esp_codec_dev.h"
 #include "esp_log.h"
@@ -58,36 +61,34 @@ esp_err_t Es7210Microphone::Configure(i2c_master_bus_handle_t bus, buses::I2cExe
     return ESP_OK;
 }
 
-esp_err_t Es7210Microphone::WriteRegisters(const uint8_t (*registers)[2], uint32_t count) {
-    for (uint32_t index = 0U; index < count; ++index) {
-        uint8_t value = registers[index][1];
-        if (control_.interface.write_reg(control_.Interface(), registers[index][0], 1, &value, 1) !=
-            ESP_CODEC_DEV_OK) {
-            return ESP_FAIL;
-        }
+esp_err_t Es7210Microphone::ConfigureCodec() {
+    if (codec_if_ != nullptr) {
+        return ESP_OK;
+    }
+    // As the Cheeko Gotchi factory firmware: all four inputs selected, which
+    // puts the ES7210 in TDM. Slot 0 is MIC1, slot 1 MIC2 (a second mic),
+    // slot 2 the speaker loopback.
+    es7210_codec_cfg_t codec_config{};
+    codec_config.ctrl_if = control_.Interface();
+    codec_config.master_mode = false;
+    codec_config.mic_selected = ES7210_SEL_MIC1 | ES7210_SEL_MIC2 | ES7210_SEL_MIC3 | ES7210_SEL_MIC4;
+    codec_config.mclk_div = 256U;
+    codec_if_ = es7210_codec_new(&codec_config);
+    if (codec_if_ == nullptr) {
+        return ESP_FAIL;
+    }
+    esp_codec_dev_sample_info_t sample{};
+    sample.bits_per_sample = 16U;
+    sample.channel = kSlots;
+    sample.channel_mask = 0U;
+    sample.sample_rate = config_.sample_rate;
+    sample.mclk_multiple = 256U;
+    if (codec_if_->set_fs(codec_if_, &sample) != ESP_CODEC_DEV_OK) {
+        (void)audio_codec_delete_codec_if(codec_if_);
+        codec_if_ = nullptr;
+        return ESP_FAIL;
     }
     return ESP_OK;
-}
-
-esp_err_t Es7210Microphone::ConfigureCodec(uint8_t gain_db) {
-    // The Cheeko Gotchi hardware self-test sequence: slave mode, 16-bit
-    // Philips I2S, MIC1 left and MIC2 right with their PGA and bias on,
-    // MIC3/MIC4 (speaker loopback) powered down. Gain registers take
-    // 0x10 (PGA on) | dB / 3.
-    const uint8_t gain = static_cast<uint8_t>(0x10U | std::min<uint32_t>(gain_db / 3U, 11U));
-    const uint8_t registers[][2] = {
-        {0x00, 0xff}, {0x00, 0x41}, {0x01, 0x3f}, {0x09, 0x30}, {0x0a, 0x30}, {0x23, 0x2a}, {0x22, 0x0a},
-        {0x20, 0x0a}, {0x21, 0x2a}, {0x08, 0x00}, {0x40, 0x43}, {0x41, 0x70}, {0x42, 0x70}, {0x07, 0x20},
-        {0x02, 0xc1}, {0x11, 0x60}, {0x12, 0x00}, {0x01, 0x34}, {0x06, 0x00}, {0x47, 0x08}, {0x48, 0x08},
-        {0x4b, 0x00}, {0x4c, 0xff}, {0x43, gain}, {0x44, gain}, {0x40, 0x43}, {0x00, 0x71}, {0x00, 0x41}};
-    return WriteRegisters(registers, sizeof(registers) / sizeof(registers[0]));
-}
-
-esp_err_t Es7210Microphone::PowerDownCodec() {
-    static constexpr uint8_t kRegisters[][2] = {{0x47, 0xff}, {0x48, 0xff}, {0x49, 0xff}, {0x4a, 0xff},
-                                                {0x4b, 0xff}, {0x4c, 0xff}, {0x40, 0xc0}, {0x01, 0x7f},
-                                                {0x06, 0x07}};
-    return WriteRegisters(kRegisters, sizeof(kRegisters) / sizeof(kRegisters[0]));
 }
 
 int32_t Es7210Microphone::Start(device::MicrophoneSampleSink sink, void* context, uint8_t gain_db) {
@@ -103,13 +104,17 @@ int32_t Es7210Microphone::Start(device::MicrophoneSampleSink sink, void* context
         return MICROPIXEL_STATUS_UNSUPPORTED;
     }
     const uint8_t gain = gain_db == kKeepDefaultGain ? config_.default_gain_db : gain_db;
-    if (ConfigureCodec(gain) != ESP_OK) {
+    if (ConfigureCodec() != ESP_OK) {
         ESP_LOGE(config_.log_tag, "%s configuration failed", config_.name);
+        return MICROPIXEL_STATUS_INTERNAL;
+    }
+    if (codec_if_->set_mic_gain(codec_if_, static_cast<float>(gain)) != ESP_CODEC_DEV_OK ||
+        codec_if_->enable(codec_if_, true) != ESP_CODEC_DEV_OK) {
         return MICROPIXEL_STATUS_INTERNAL;
     }
     const esp_err_t enable_status = i2s_channel_enable(rx_);
     if (enable_status != ESP_OK && enable_status != ESP_ERR_INVALID_STATE) {
-        (void)PowerDownCodec();
+        (void)codec_if_->enable(codec_if_, false);
         return MICROPIXEL_STATUS_INTERNAL;
     }
     sink_ = sink;
@@ -117,7 +122,7 @@ int32_t Es7210Microphone::Start(device::MicrophoneSampleSink sink, void* context
     (void)xSemaphoreTake(idle_, 0U);
     running_.store(true, std::memory_order_release);
     xTaskNotifyGive(task_);
-    ESP_LOGI(config_.log_tag, "capture on: %u Hz, MIC1+MIC2, gain %u dB", static_cast<unsigned>(config_.sample_rate),
+    ESP_LOGI(config_.log_tag, "capture on: %u Hz, TDM slot 0 (MIC1), gain %u dB", static_cast<unsigned>(config_.sample_rate),
              static_cast<unsigned>(gain));
     return MICROPIXEL_STATUS_OK;
 }
@@ -130,7 +135,7 @@ int32_t Es7210Microphone::Stop() {
     // the sink may go away.
     const bool idle = xSemaphoreTake(idle_, pdMS_TO_TICKS(kStopTimeoutMs)) == pdTRUE;
     (void)i2s_channel_disable(rx_);
-    (void)PowerDownCodec();
+    (void)codec_if_->enable(codec_if_, false);
     sink_ = nullptr;
     sink_context_ = nullptr;
     ESP_LOGI(config_.log_tag, "capture off");
@@ -144,12 +149,14 @@ void Es7210Microphone::Run() {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         uint32_t frames_since_log = 0U;
         uint32_t logged_seconds = 0U;
-        int32_t peak[2]{};
+        int32_t peak[kSlots]{};
+        uint32_t zero_words = 0U;
+        uint32_t total_words = 0U;
         while (running_.load(std::memory_order_acquire)) {
             size_t bytes_read = 0U;
             const esp_err_t status =
                 i2s_channel_read(rx_, interleaved_, sizeof(interleaved_), &bytes_read, pdMS_TO_TICKS(kReadTimeoutMs));
-            const uint32_t frames = static_cast<uint32_t>(bytes_read / (2U * sizeof(int16_t)));
+            const uint32_t frames = static_cast<uint32_t>(bytes_read / (kSlots * sizeof(int16_t)));
             if (status != ESP_OK && status != ESP_ERR_TIMEOUT) {
                 ESP_LOGW(config_.log_tag, "RX read failed: %s", esp_err_to_name(status));
                 vTaskDelay(pdMS_TO_TICKS(kReadTimeoutMs));
@@ -158,29 +165,44 @@ void Es7210Microphone::Run() {
             if (frames == 0U || !running_.load(std::memory_order_acquire)) {
                 continue;
             }
+            for (uint32_t word = 0U; word < frames * kSlots; ++word) {
+                zero_words += interleaved_[word] == 0 ? 1U : 0U;
+            }
+            total_words += frames * kSlots;
             for (uint32_t frame = 0U; frame < frames; ++frame) {
-                // Both MEMS mics: averaging halves their uncorrelated noise.
-                mono_[frame] = static_cast<int16_t>((static_cast<int32_t>(interleaved_[frame * 2U]) +
-                                                     static_cast<int32_t>(interleaved_[frame * 2U + 1U])) /
-                                                    2);
-                for (uint32_t channel = 0U; channel < 2U; ++channel) {
-                    const int32_t magnitude = std::abs(static_cast<int32_t>(interleaved_[frame * 2U + channel]));
-                    if (magnitude > peak[channel]) {
-                        peak[channel] = magnitude;
-                    }
+                // In four-slot TDM the ADC words arrive 24 dB (x16) below
+                // full scale: room noise ~5 LSB, the speaker beep ~2,600.
+                // Restore the level the rest of the stack expects.
+                const int32_t boosted = static_cast<int32_t>(interleaved_[frame * kSlots]) * kTdmGain;
+                mono_[frame] = static_cast<int16_t>(boosted > 32767 ? 32767 : (boosted < -32768 ? -32768 : boosted));
+                for (uint32_t slot = 0U; slot < kSlots; ++slot) {
+                    const int32_t magnitude = std::abs(static_cast<int32_t>(interleaved_[frame * kSlots + slot]));
+                    peak[slot] = magnitude > peak[slot] ? magnitude : peak[slot];
                 }
             }
             sink_(sink_context_, mono_, frames);
             frames_since_log += frames;
             if (frames_since_log >= config_.sample_rate) {
                 if (logged_seconds < kLevelLogSeconds) {
-                    ESP_LOGI(config_.log_tag, "peak L=%ld R=%ld", static_cast<long>(peak[0]),
-                             static_cast<long>(peak[1]));
+                    ESP_LOGI(config_.log_tag, "peak MIC1=%ld MIC2=%ld MIC3=%ld MIC4=%ld zero words %lu/%lu",
+                             static_cast<long>(peak[0]), static_cast<long>(peak[1]), static_cast<long>(peak[2]),
+                             static_cast<long>(peak[3]), static_cast<unsigned long>(zero_words),
+                             static_cast<unsigned long>(total_words));
+                    char raw[8U * 40U + 1U];
+                    uint32_t used = 0U;
+                    for (uint32_t word = 0U; word < 40U && word < frames * 2U; ++word) {
+                        used += static_cast<uint32_t>(
+                            std::snprintf(raw + used, sizeof(raw) - used, "%d ", interleaved_[word]));
+                    }
+                    ESP_LOGI(config_.log_tag, "raw RX: %s", raw);
                     ++logged_seconds;
                 }
                 frames_since_log = 0U;
-                peak[0] = 0;
-                peak[1] = 0;
+                for (int32_t& slot_peak : peak) {
+                    slot_peak = 0;
+                }
+                zero_words = 0U;
+                total_words = 0U;
             }
         }
         (void)xSemaphoreGive(idle_);
