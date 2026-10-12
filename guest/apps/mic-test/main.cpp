@@ -55,7 +55,12 @@ char* AppendText(char* out, const char* text) {
     return out;
 }
 
-enum class Mode : uint8_t { kIdle, kRecording, kPlaying };
+enum class Mode : uint8_t { kIdle, kCue, kRecording, kPlaying };
+
+// Playback lifts the take so its loudest sample reaches kTargetPeak, by at
+// most kMaxBoost: a speaking voice records ~30 dB under full scale.
+constexpr int32_t kTargetPeak = 26000;
+constexpr int32_t kMaxBoost = 16;
 
 class MicTestApp final {
    public:
@@ -104,6 +109,8 @@ class MicTestApp final {
             Capture();
         } else if (stream_ && event.LowWaterFrom(*stream_) != nullptr) {
             Feed();
+        } else if (cue_ && event.TimerFrom(*cue_) != nullptr) {
+            BeginCapture();
         } else if (drain_ && event.TimerFrom(*drain_) != nullptr) {
             FinishPlayback();
         } else if (const auto* touch = event.touch()) {
@@ -116,6 +123,7 @@ class MicTestApp final {
                 StartRecording();
             }
         } else if (event.type() == micropixel::EventType::kStop) {
+            cue_.reset();
             (void)microphone_.Stop();
         }
         return micropixel::EventResult::kContinue;
@@ -129,20 +137,29 @@ class MicTestApp final {
         recorded_ = 0U;
         dropped_ = 0U;
         peak_ = 0;
+        // Start cue first; the microphone opens once it has finished so the
+        // take holds only the voice.
+        micropixel::Tone cue{};
+        cue.frequency_hz = 880U;
+        cue.duration = Duration::Milliseconds(150U);
+        cue.volume_per_mille = 300U;
+        (void)app_.audio().Play(cue);
+        mode_ = Mode::kCue;
+        cue_.emplace(app_.timers().After(Duration::Milliseconds(250U)).value());
+        ShowStatus("Get ready...", kRecord);
+        Present();
+    }
+
+    void BeginCapture() {
+        cue_.reset();
         if (const auto started = microphone_.Start(); !started) {
+            mode_ = Mode::kIdle;
             ShowStatus("Mic start failed", kRecord);
             Present();
             return;
         }
         mode_ = Mode::kRecording;
         started_at_ = app_.clock().Now();
-        // Start cue; it also lands in the recording, so a silent playback
-        // means the microphone path is broken rather than the room quiet.
-        micropixel::Tone cue{};
-        cue.frequency_hz = 880U;
-        cue.duration = Duration::Milliseconds(200U);
-        cue.volume_per_mille = 300U;
-        (void)app_.audio().Play(cue);
         ShowStatus("Recording...", kRecord);
         detail_.SetText("Speak now");
         Present();
@@ -170,16 +187,30 @@ class MicTestApp final {
             recorded_ += *read;
         }
         peak_ = chunk_peak > peak_ ? chunk_peak : peak_;
-        SetBar(chunk_peak, kRecord);
+        // Logarithmic meter: room noise (~100) stays near empty, speech fills
+        // most of it. 15 steps of 1.5x span 100..32767.
+        int32_t steps = 0;
+        for (int32_t threshold = 100; threshold <= chunk_peak && steps < 15; threshold = threshold * 3 / 2) {
+            ++steps;
+        }
+        SetBar(steps * 32767 / 15, kRecord);
         if (recorded_ >= kRecordSamples) {
             (void)microphone_.Stop();
             const Duration elapsed = app_.clock().Now() - started_at_;
-            char* end = AppendText(detail_text_, "3 s took ");
-            end = AppendNumber(end, static_cast<uint32_t>(elapsed.count_microseconds() / 1000U));
-            end = AppendText(end, " ms, peak ");
+            int32_t boost = peak_ > 0 ? kTargetPeak / peak_ : kMaxBoost;
+            boost = boost < 1 ? 1 : (boost > kMaxBoost ? kMaxBoost : boost);
+            for (uint32_t index = 0U; index < kRecordSamples; ++index) {
+                int32_t value = static_cast<int32_t>(recording[index]) * boost;
+                value = value > 32767 ? 32767 : (value < -32768 ? -32768 : value);
+                recording[index] = static_cast<int16_t>(value);
+            }
+            char* end = AppendText(detail_text_, "Voice peak ");
             end = AppendNumber(end, static_cast<uint32_t>(peak_));
-            end = AppendText(end, ", lost ");
-            (void)AppendNumber(end, dropped_);
+            end = AppendText(end, ", boost x");
+            end = AppendNumber(end, static_cast<uint32_t>(boost));
+            end = AppendText(end, ", ");
+            end = AppendNumber(end, static_cast<uint32_t>(elapsed.count_microseconds() / 1000U));
+            (void)AppendText(end, " ms");
             detail_.SetText(detail_text_);
             app_.log().Info(detail_text_);
             StartPlayback();
@@ -258,6 +289,7 @@ class MicTestApp final {
     Rect bar_track_{};
     std::optional<micropixel::PcmStream> stream_;
     std::optional<micropixel::Timer> drain_;
+    std::optional<micropixel::Timer> cue_;
     micropixel::TimePoint started_at_{};
     char detail_text_[64]{};
     int32_t width_{};
