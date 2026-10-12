@@ -170,9 +170,8 @@ void Es7210Microphone::Run() {
             }
             total_words += frames * kSlots;
             for (uint32_t frame = 0U; frame < frames; ++frame) {
-                // In four-slot TDM the ADC words arrive 24 dB (x16) below
-                // full scale: room noise ~5 LSB, the speaker beep ~2,600.
-                // Restore the level the rest of the stack expects.
+                // Speech at arm's length reaches ~3,000 at 30-33 dB PGA; a
+                // little extra keeps meters lively without clipping it.
                 const int32_t boosted = static_cast<int32_t>(interleaved_[frame * kSlots]) * kTdmGain;
                 mono_[frame] = static_cast<int16_t>(boosted > 32767 ? 32767 : (boosted < -32768 ? -32768 : boosted));
                 for (uint32_t slot = 0U; slot < kSlots; ++slot) {
@@ -188,13 +187,6 @@ void Es7210Microphone::Run() {
                              static_cast<long>(peak[0]), static_cast<long>(peak[1]), static_cast<long>(peak[2]),
                              static_cast<long>(peak[3]), static_cast<unsigned long>(zero_words),
                              static_cast<unsigned long>(total_words));
-                    char raw[8U * 40U + 1U];
-                    uint32_t used = 0U;
-                    for (uint32_t word = 0U; word < 40U && word < frames * 2U; ++word) {
-                        used += static_cast<uint32_t>(
-                            std::snprintf(raw + used, sizeof(raw) - used, "%d ", interleaved_[word]));
-                    }
-                    ESP_LOGI(config_.log_tag, "raw RX: %s", raw);
                     ++logged_seconds;
                 }
                 frames_since_log = 0U;

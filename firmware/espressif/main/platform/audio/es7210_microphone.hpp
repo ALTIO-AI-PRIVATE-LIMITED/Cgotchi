@@ -48,7 +48,7 @@ class Es7210Microphone final : public device::Microphone {
     static constexpr uint32_t kChunkFrames = 160U;
     // TDM slots per frame: MIC1..MIC4.
     static constexpr uint32_t kSlots = 4U;
-    static constexpr int32_t kTdmGain = 16;
+    static constexpr int32_t kTdmGain = 2;
 
     static void TaskEntry(void* argument);
     void Run();
