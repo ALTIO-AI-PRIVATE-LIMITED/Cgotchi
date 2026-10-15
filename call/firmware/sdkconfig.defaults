@@ -35,3 +35,10 @@ CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 
 # Native USB-Serial/JTAG console (no UART bridge on the board)
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Audio-only call: no camera capture (the camera stack is stubbed out, see stubs/)
+CONFIG_ESP_CAPTURE_ENABLE_VIDEO=n
+
+# esp_peer self-signs its DTLS certificate (mbedtls x509 write; off by default on IDF 6)
+CONFIG_MBEDTLS_X509_CREATE_C=y
+CONFIG_MBEDTLS_X509_CRT_WRITE_C=y

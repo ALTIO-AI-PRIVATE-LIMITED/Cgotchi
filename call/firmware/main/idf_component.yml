@@ -2,4 +2,18 @@ dependencies:
   idf: ">=5.4"
   livekit/livekit: "0.3.11"
   livekit/example_utils: "~0.2.0"
-  espressif/esp_codec_dev: "~1.4"
+  espressif/cjson: "*"
+  # Audio-only call: replace the camera stack with empty stubs (it does not build on IDF 6.x).
+  espressif/esp_cam_sensor:
+    override_path: "../stubs/esp_cam_sensor"
+  espressif/esp_video:
+    override_path: "../stubs/esp_video"
+  espressif/esp32-camera:
+    override_path: "../stubs/esp32-camera"
+  # Pinned versions patched to build on IDF 6.x (see ../patched/README.md).
+  espressif/esp_codec_dev:
+    override_path: "../patched/espressif__esp_codec_dev"
+  espressif/esp-dsp:
+    override_path: "../patched/espressif__esp-dsp"
+  tempotian/media_lib_sal:
+    override_path: "../patched/tempotian__media_lib_sal"
