@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CGotchi Touch Test</title>
+<style>
+:root{--bg:#f6f6f3;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e2e2dc;--ok:#1f8a4c;--bad:#c23b2a;--warn:#b7791f;--acc:#ff7a1a;--okbg:#e6f4ec;--badbg:#fbe9e6;--warnbg:#fdf3e1}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1e1e1c;--ink:#ecece8;--mute:#9a9a93;--line:#33332f;--okbg:#17301f;--badbg:#3a1c17;--warnbg:#3a2c12}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+header h1{font-size:18px;margin:0}
+header .sp{flex:1}
+main{padding:16px 20px;display:grid;gap:16px;grid-template-columns:minmax(0,1fr) 320px;max-width:1400px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.steps{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;border-radius:8px;cursor:pointer}
+button.big{font-size:16px;padding:12px 20px;font-weight:600}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ok{border-color:var(--ok);color:var(--ok)} button.bad{border-color:var(--bad);color:var(--bad)}
+button.sel.ok{background:var(--ok);color:#fff} button.sel.bad{background:var(--bad);color:#fff}
+input[type=text],input[type=number]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);width:90px}
+label{color:var(--mute);font-size:13px}
+.status{margin-top:10px;font-size:14px;color:var(--mute);min-height:20px}
+progress{width:100%;height:8px;margin-top:8px}
+.verdict{border-radius:10px;padding:14px 16px;margin-top:4px}
+.verdict b{font-size:18px;display:block}
+.v-ok{background:var(--okbg);color:var(--ok)} .v-bad{background:var(--badbg);color:var(--bad)} .v-warn{background:var(--warnbg);color:var(--warn)} .v-idle{background:var(--bg);color:var(--mute)}
+.verdict p{margin:6px 0 0;color:var(--ink);font-size:14px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv span:nth-child(odd){color:var(--mute)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+#log{height:260px;overflow:auto;background:var(--bg);border-radius:8px;padding:8px;white-space:pre-wrap;word-break:break-all}
+canvas{width:100%;max-width:240px;aspect-ratio:240/296;border:1px solid var(--line);border-radius:8px;background:var(--bg);display:block;margin:0 auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:500}
+.tag{padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.tablewrap{overflow-x:auto}
+.warnbox{background:var(--warnbg);color:var(--warn);padding:10px 14px;border-radius:8px;margin:12px 20px 0}
+.grid2{display:grid;gap:16px;min-width:0}
+.grid2>*{min-width:0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.small{font-size:13px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>CGotchi Touch Test</h1>
+  <span class="small">Firmware <span class="mono">touchdiag-1</span></span>
+  <span class="sp"></span>
+  <span class="small" id="folderInfo">Logs: kept in this browser</span>
+  <button id="btnFolder">Save logs to a folder…</button>
+</header>
+<div id="noSerial" class="warnbox" hidden>This browser has no Web Serial. Open this page in Chrome or Edge on a computer.</div>
+
+<main>
+  <div class="grid2">
+    <section class="card">
+      <h2>Current device</h2>
+      <div class="row" style="margin-bottom:12px">
+        <label>Device #</label><input type="number" id="devNum" min="1" value="1">
+        <label>Note</label><input type="text" id="devNote" style="width:200px" placeholder="optional, e.g. box label">
+      </div>
+      <div class="steps">
+        <button class="big primary" id="btnFlash">1. Flash</button>
+        <button class="big" id="btnTrack">2. Track</button>
+        <span class="small">3. Touch and swipe the whole screen · 4. Unplug</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <span class="small">Does touch work?</span>
+        <button class="ok" id="btnWorks" disabled>Touch works</button>
+        <button class="bad" id="btnDead" disabled>Touch not working</button>
+        <span class="sp" style="flex:1"></span>
+        <button id="btnEnd" disabled>End this device</button>
+      </div>
+      <progress id="prog" value="0" max="100" hidden></progress>
+      <div class="status" id="status">Plug in a CGotchi and press Flash. If it already has the test firmware, press Track.</div>
+    </section>
+
+    <section class="card">
+      <h2>Live diagnosis</h2>
+      <div id="verdict" class="verdict v-idle"><b>Waiting</b><p>Press Track to start reading the device.</p></div>
+      <div class="kv" style="margin-top:12px" id="facts"></div>
+    </section>
+
+    <section class="card">
+      <h2>Serial log</h2>
+      <div id="log" class="mono"></div>
+    </section>
+
+    <section class="card">
+      <h2>Tested devices <span id="sumline" style="text-transform:none;letter-spacing:0"></span></h2>
+      <div class="row" style="margin-bottom:10px">
+        <button id="btnCsv">Download summary (CSV)</button>
+        <button id="btnAll">Download all logs</button>
+        <button id="btnClear">Clear list</button>
+      </div>
+      <div id="pattern" class="small" style="margin-bottom:10px"></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>#</th><th>MAC</th><th>Result</th><th>Tester</th><th>Touches</th><th>Touch chip</th><th>Chip FW</th><th>I2C errors</th><th>IRQ</th><th>Time</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <aside class="grid2" style="align-content:start">
+    <section class="card">
+      <h2>Where touches landed</h2>
+      <canvas id="heat" width="240" height="296"></canvas>
+      <div class="small" style="margin-top:8px;text-align:center" id="cover">Coverage: –</div>
+    </section>
+    <section class="card small">
+      <h2>How it works</h2>
+      <ol style="padding-left:18px;margin:0">
+        <li><b>Flash</b> writes the touch test firmware. Pick the <span class="mono">usbmodem</span> port.</li>
+        <li><b>Track</b> starts recording the log. The screen shows <span class="mono">TOUCH DIAG</span>. If Track finds nothing, unplug and replug once, then press Track again.</li>
+        <li>Touch and swipe all over the screen for about 15 seconds. Tap the result buttons.</li>
+        <li><b>Unplug.</b> The log is saved with its diagnosis and the page resets for the next device.</li>
+      </ol>
+      <p style="margin:10px 0 0">Flashing replaces the firmware on the device. Reflash the normal firmware before shipping.</p>
+    </section>
+  </aside>
+</main>
+
+<script type="module">
+import { ESPLoader, Transport } from 'https://cdn.jsdelivr.net/npm/esptool-js@0.5.7/bundle.js';
+
+const FW_URLS = ['cgotchi-touchdiag.bin', 'https://raw.githubusercontent.com/ALTIO-AI-PRIVATE-LIMITED/micropixel-gotchi/claude/project-thread-guvg8h/tools/touch_test/site/cgotchi-touchdiag.bin'];
+const VID = 0x303a;
+const $ = id => document.getElementById(id);
+const STORE = 'cgotchi-touchtest-v1';
+
+// ---------- persistence ----------
+let results = [];
+try { results = JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { results = []; }
+function persist() { try { localStorage.setItem(STORE, JSON.stringify(results)); } catch (e) { console.warn('storage full', e); } }
+let dirHandle = null;
+
+// ---------- session ----------
+let S = null;          // current device session
+let port = null, reader = null, tracking = false, graceTimer = null;
+function newSession() {
+  S = { num: +$('devNum').value || 1, note: $('devNote').value.trim(), start: new Date().toISOString(), end: null,
+        log: '', mac: '', fw: '', info: {}, dev: null, tpic: null, tpicFail: false,
+        base: null, last: null, acc: { rd_ok: 0, rd_err: 0, irq: 0, fingers: 0 }, irqLevels: new Set(),
+        downs: 0, moves: 0, pts: [], btns: new Set(), tester: null, flashed: false, diagLines: 0, verdict: null };
+  $('log').textContent = '';
+  drawHeat(); render();
+  setTester(null);
+}
+function addLog(line) {
+  const t = new Date().toISOString().slice(11, 23);
+  S.log += `[${t}] ${line}\n`;
+  const el = $('log');
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.textContent += line + '\n';
+  if (el.textContent.length > 60000) el.textContent = el.textContent.slice(-40000);
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+function status(msg) { $('status').textContent = msg; }
+
+// ---------- DIAG parsing ----------
+function kv(str) { const o = {}; for (const m of str.matchAll(/(\w+)=(\S+)/g)) o[m[1]] = m[2]; return o; }
+function parseLine(line) {
+  const i = line.indexOf('DIAG ');
+  if (i < 0) return;
+  const body = line.slice(i + 5).trim();
+  const kind = body.split(' ')[0];
+  const o = kv(body);
+  S.diagLines++;
+  if (kind === 'info') { S.mac = o.mac || S.mac; S.fw = o.fw || S.fw; S.info = o; }
+  else if (kind === 'dev') S.dev = { cst810: o.cst810 === '1', es8311: o.es8311 === '1', es7210: o.es7210 === '1', accel: o.accel === '1' };
+  else if (kind === 'tpic') { if (o.chip) { S.tpic = o; S.tpicFail = false; } else S.tpicFail = true; }
+  else if (kind === 'stat') {
+    const cur = { rd_ok: +o.rd_ok, rd_err: +o.rd_err, irq: +o.irq, fingers: +o.fingers, up: +o.up };
+    S.irqLevels.add(o.irq_level);
+    if (S.last) {
+      const reboot = cur.up < S.last.up;
+      for (const k of ['rd_ok', 'rd_err', 'irq', 'fingers']) S.acc[k] += reboot ? cur[k] : Math.max(0, cur[k] - S.last[k]);
+    }
+    S.last = cur; S.lastStat = o;
+  }
+  else if (kind === 'down' || kind === 'move') {
+    if (kind === 'down') S.downs++; else S.moves++;
+    const m = /scr=(-?\d+),(-?\d+)/.exec(body);
+    if (m) { const p = [+m[1], +m[2]]; S.pts.push(p); dot(p, kind === 'down'); }
+  }
+  else if (kind === 'btn') S.btns.add(body.split(' ')[1]);
+}
+
+// ---------- diagnosis ----------
+function zones() {
+  const z = new Set();
+  for (const [x, y] of S.pts) z.add(Math.min(2, Math.max(0, Math.floor(x / 80))) + 3 * Math.min(2, Math.max(0, Math.floor(y / 99))));
+  return z.size;
+}
+function diagnose(final) {
+  const a = S.acc, reads = a.rd_ok + a.rd_err, errPct = reads ? 100 * a.rd_err / reads : 0;
+  if (!S.diagLines) return final
+    ? { code: 'NO_DATA', cls: 'v-bad', title: 'No data from device', text: 'The test firmware never talked. Flash may have failed, the device may not have restarted, or the cable is charge-only. Retest this unit.' }
+    : { code: 'WAIT', cls: 'v-idle', title: 'Listening…', text: 'No test output yet. If nothing appears in 10 seconds, unplug and replug once, then press Track again.' };
+  if (S.dev && !S.dev.cst810) return { code: 'CHIP_MISSING', cls: 'v-bad', title: 'Touch chip not found', text: 'The CST810 touch chip does not answer on I2C (0x15). Likely the touch flex cable is not seated or damaged, or the chip has no power. Hardware fix: reseat or replace the display/touch flex.' };
+  if (S.tpicFail && !S.tpic) return { code: 'CHIP_NO_ID', cls: 'v-bad', title: 'Touch chip answers but ID read fails', text: 'The chip is on the bus but its ID registers cannot be read. Points to a bad connection or a broken touch chip firmware.' };
+  if (reads > 20 && errPct > 2) return { code: 'I2C_UNSTABLE', cls: 'v-bad', title: 'Touch connection unstable', text: `${a.rd_err} of ${reads} touch reads failed (${errPct.toFixed(1)}%). Usually a loose or cracked touch flex or a bad solder joint.` };
+  if (S.downs > 0) {
+    const z = zones();
+    return z >= 6 || !final
+      ? { code: 'TOUCH_OK', cls: 'v-ok', title: 'Touch works', text: `${S.downs} taps seen, ${z} of 9 screen zones touched.${z < 6 ? ' Swipe across the whole screen to check for dead areas.' : ''}` }
+      : { code: 'TOUCH_PARTIAL', cls: 'v-warn', title: 'Touch works, but only partly tested', text: `${S.downs} taps seen, only ${z} of 9 zones reached. If you did swipe everywhere, part of the panel is dead (panel fault).` };
+  }
+  if (a.irq > 0) return { code: 'IRQ_NO_POINTS', cls: 'v-bad', title: 'Chip reacts but sends no position', text: `The touch chip raised its interrupt ${a.irq} times but never reported a finger. Points to the touch chip firmware or its settings, not the panel.` };
+  if (S.irqLevels.size === 1 && S.irqLevels.has('0')) return { code: 'IRQ_STUCK', cls: 'v-bad', title: 'No touches, IRQ line stuck low', text: 'The chip answers but its interrupt line never goes high and no finger is reported. Chip stuck or firmware fault.' };
+  const secs = S.last ? reads / 20 : 0;
+  if (!final && secs < 15) return { code: 'WAIT', cls: 'v-warn', title: 'No touches yet', text: 'Touch chip is OK. Touch and swipe the screen now.' };
+  return { code: 'NO_SENSE', cls: 'v-bad', title: 'Touch chip OK, panel senses nothing', text: `The chip answered ${a.rd_ok} reads with no errors but never saw a finger${S.tester === 'works' ? '' : ' while you touched'}. Same as the unit checked on 12 Nov: the touch panel (sensor) or its flex to the chip is faulty.` };
+}
+function render() {
+  const v = S ? diagnose(false) : null;
+  if (v) { $('verdict').className = 'verdict ' + v.cls; $('verdict').innerHTML = `<b>${v.title}</b><p>${v.text}</p>`; }
+  const a = S.acc, f = [];
+  const yes = b => b == null ? '–' : (b ? 'found' : 'MISSING');
+  f.push(['MAC', S.mac || '–'], ['Firmware', S.fw || '–'], ['Touch chip', S.dev ? yes(S.dev.cst810) : '–'],
+         ['Chip ID / FW', S.tpic ? `${S.tpic.chip} / ${S.tpic.fwver}` : (S.tpicFail ? 'read failed' : '–')],
+         ['Touch reads', `${a.rd_ok} ok, ${a.rd_err} failed`], ['IRQ pulses', a.irq], ['Taps', S.downs],
+         ['Buttons', S.btns.size ? [...S.btns].join(' ') : '–'],
+         ['Other chips', S.dev ? `codec ${yes(S.dev.es8311)}, mics ${yes(S.dev.es7210)}, accel ${yes(S.dev.accel)}` : '–']);
+  $('facts').innerHTML = f.map(([k, v]) => `<span>${k}</span><span class="mono">${v}</span>`).join('');
+  $('cover').textContent = `Coverage: ${zones()} of 9 zones`;
+  $('btnWorks').disabled = $('btnDead').disabled = $('btnEnd').disabled = !(tracking || S.flashed || S.diagLines);
+}
+setInterval(() => { if (tracking) render(); }, 500);
+
+// ---------- heatmap ----------
+const ctx = $('heat').getContext('2d');
+function drawHeat() {
+  ctx.clearRect(0, 0, 240, 296);
+  ctx.strokeStyle = 'rgba(128,128,128,.35)';
+  for (let i = 1; i < 3; i++) { ctx.beginPath(); ctx.moveTo(i * 80, 0); ctx.lineTo(i * 80, 296); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i * 99); ctx.lineTo(240, i * 99); ctx.stroke(); }
+}
+function dot([x, y], down) { ctx.fillStyle = down ? 'rgba(255,122,26,.9)' : 'rgba(31,138,76,.5)'; ctx.beginPath(); ctx.arc(x, y, down ? 5 : 3, 0, 7); ctx.fill(); }
+
+// ---------- serial helpers ----------
+async function pickPort(allowPrompt) {
+  const ports = (await navigator.serial.getPorts()).filter(p => p.getInfo().usbVendorId === VID);
+  if (ports.length === 1) return ports[0];
+  if (!allowPrompt) return null;
+  return navigator.serial.requestPort({ filters: [{ usbVendorId: VID }] });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- flash ----------
+let fwCache = null;
+async function loadFw() {
+  if (fwCache) return fwCache;
+  let res;
+  for (const u of FW_URLS) { try { res = await fetch(u, { cache: 'no-cache' }); if (res.ok) break; } catch {} }
+  if (!res?.ok) throw new Error('could not download the firmware file');
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf[0] !== 0xE9) throw new Error('firmware file looks wrong');
+  let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return (fwCache = s);
+}
+$('btnFlash').onclick = async () => {
+  if (tracking) await finishDevice('next device started');
+  newSession();
+  let p;
+  try { p = await navigator.serial.requestPort({ filters: [{ usbVendorId: VID }] }); } catch { status('No port picked.'); return; }
+  setBusy(true); $('prog').hidden = false; $('prog').value = 0;
+  const term = { clean() {}, writeLine: l => addLog('[flash] ' + l), write: l => {} };
+  let transport;
+  try {
+    const data = await loadFw();
+    status('Connecting to the bootloader…');
+    transport = new Transport(p, false);
+    const loader = new ESPLoader({ transport, baudrate: 460800, terminal: term, debugLogging: false });
+    const chip = await loader.main();
+    addLog('[flash] chip: ' + chip);
+    status('Writing firmware…');
+    await loader.writeFlash({ fileArray: [{ data, address: 0 }], flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+      eraseAll: false, compress: true, reportProgress: (i, w, t) => { $('prog').value = Math.round(100 * w / t); } });
+    await loader.after('hard_reset');
+    S.flashed = true;
+    addLog('[flash] done, device restarted');
+    status('Flashed. Press Track. The screen should say TOUCH DIAG.');
+    $('btnTrack').classList.add('primary'); $('btnFlash').classList.remove('primary');
+  } catch (e) {
+    addLog('[flash] ERROR ' + (e.message || e));
+    status('Flash failed: ' + (e.message || e) + '. Unplug, replug and try again.');
+  } finally {
+    try { await transport?.disconnect(); } catch {}
+    setBusy(false); $('prog').hidden = true; render();
+  }
+};
+function setBusy(b) { $('btnFlash').disabled = $('btnTrack').disabled = b; }
+
+// ---------- track ----------
+$('btnTrack').onclick = async () => {
+  if (tracking) return;
+  if (!S || S.end) newSession();
+  try { port = await pickPort(true); } catch { status('No port picked.'); return; }
+  await startReading(false);
+};
+async function startReading(resumed) {
+  try { await port.open({ baudRate: 115200 }); }
+  catch (e) { status('Could not open the port: ' + e.message + '. Unplug, replug, then press Track.'); return; }
+  try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch {}
+  tracking = true;
+  $('btnTrack').textContent = '● Tracking'; $('btnTrack').disabled = true; $('btnTrack').classList.remove('primary');
+  addLog(resumed ? '[page] port back, tracking resumed' : '[page] tracking started');
+  status('Tracking. Touch and swipe the whole screen, then unplug.');
+  render();
+  const dec = new TextDecoder(); let buf = '';
+  try {
+    reader = port.readable.getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let n; while ((n = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, n).replace(/\r$/, ''); buf = buf.slice(n + 1); if (l) { addLog(l); parseLine(l); } }
+    }
+  } catch (e) { /* unplugged */ }
+  try { reader.releaseLock(); } catch {}
+  try { await port.close(); } catch {}
+  if (!tracking) return;               // ended by button
+  tracking = false;
+  addLog('[page] port closed (unplugged?)');
+  status('Device disconnected. Saving in 4 s unless it comes back…');
+  clearTimeout(graceTimer);
+  graceTimer = setTimeout(() => finishDevice('unplugged'), 4000);
+}
+navigator.serial?.addEventListener('connect', async e => {
+  if (!graceTimer || !S || S.end) return;
+  clearTimeout(graceTimer); graceTimer = null;
+  await sleep(800); port = e.target; await startReading(true);
+});
+
+// ---------- tester verdict ----------
+function setTester(t) { if (S) S.tester = t; $('btnWorks').classList.toggle('sel', t === 'works'); $('btnDead').classList.toggle('sel', t === 'dead'); }
+$('btnWorks').onclick = () => { setTester('works'); addLog('[tester] touch works'); render(); };
+$('btnDead').onclick = () => { setTester('dead'); addLog('[tester] touch NOT working'); render(); };
+$('btnEnd').onclick = async () => {
+  if (tracking) { tracking = false; try { await reader?.cancel(); } catch {} }
+  finishDevice('ended by button');
+};
+
+// ---------- finish + save ----------
+async function finishDevice(why) {
+  clearTimeout(graceTimer); graceTimer = null;
+  if (!S || S.end) return;
+  tracking = false;
+  S.end = new Date().toISOString();
+  const v = diagnose(true); S.verdict = v;
+  addLog(`[page] ${why}. Result: ${v.code} - ${v.title}`);
+  const r = { num: S.num, note: S.note, mac: S.mac, start: S.start, end: S.end, code: v.code, title: v.title, text: v.text,
+    tester: S.tester, downs: S.downs, zones: zones(), chip: S.dev ? (S.dev.cst810 ? 'found' : 'MISSING') : '',
+    tpic: S.tpic ? `${S.tpic.chip}/${S.tpic.proj}/${S.tpic.fwver}` : (S.tpicFail ? 'read fail' : ''),
+    rd_ok: S.acc.rd_ok, rd_err: S.acc.rd_err, irq: S.acc.irq, flashed: S.flashed, log: logHeader(v) + S.log };
+  results.push(r); persist();
+  await saveToFolder(r);
+  render(); renderTable();
+  $('btnTrack').textContent = '2. Track'; $('btnTrack').disabled = false;
+  $('btnFlash').classList.add('primary'); $('btnTrack').classList.remove('primary');
+  $('devNum').value = S.num + 1; $('devNote').value = '';
+  status(`Device ${r.num} saved: ${v.title}. Plug in device ${S.num + 1} and press Flash.`);
+}
+function logHeader(v) {
+  return `CGotchi touch test\nDevice #: ${S.num}\nNote: ${S.note}\nMAC: ${S.mac}\nStarted: ${S.start}\nEnded: ${S.end}\n` +
+    `Result: ${v.code} - ${v.title}\n${v.text}\nTester says: ${S.tester || 'not recorded'}\n` +
+    `Touch chip: ${S.dev ? (S.dev.cst810 ? 'found' : 'MISSING') : '?'}  ID/proj/fw: ${S.tpic ? `${S.tpic.chip}/${S.tpic.proj}/${S.tpic.fwver}` : '?'}\n` +
+    `Reads ok/failed: ${S.acc.rd_ok}/${S.acc.rd_err}  IRQ pulses: ${S.acc.irq}  Taps: ${S.downs}  Zones: ${zones()}/9\n\n----- raw log -----\n`;
+}
+const fname = r => `device-${String(r.num).padStart(2, '0')}_${(r.mac || 'nomac').replace(/:/g, '')}_${r.code}.log`;
+async function saveToFolder(r) {
+  if (!dirHandle) return;
+  try {
+    const fh = await dirHandle.getFileHandle(fname(r), { create: true });
+    const w = await fh.createWritable(); await w.write(r.log); await w.close();
+    const sh = await dirHandle.getFileHandle('summary.csv', { create: true });
+    const w2 = await sh.createWritable(); await w2.write(csv()); await w2.close();
+  } catch (e) { status('Could not write to the folder: ' + e.message); }
+}
+$('btnFolder').onclick = async () => {
+  if (!window.showDirectoryPicker) { alert('Folder saving needs Chrome or Edge.'); return; }
+  try { dirHandle = await showDirectoryPicker({ mode: 'readwrite' }); $('folderInfo').textContent = 'Logs: saving to folder "' + dirHandle.name + '"'; }
+  catch {}
+};
+
+// ---------- table / exports ----------
+const tagCls = c => c === 'TOUCH_OK' ? 'v-ok' : (c === 'TOUCH_PARTIAL' ? 'v-warn' : 'v-bad');
+function renderTable() {
+  $('rows').innerHTML = results.map((r, i) => `<tr><td>${r.num}${r.note ? ' <span class="small">' + esc(r.note) + '</span>' : ''}</td><td class="mono">${r.mac || '–'}</td>
+    <td><span class="tag ${tagCls(r.code)}" title="${esc(r.text)}">${r.title}</span></td><td>${r.tester || '–'}</td><td>${r.downs}</td>
+    <td>${r.chip || '–'}</td><td class="mono">${r.tpic || '–'}</td><td>${r.rd_err}</td><td>${r.irq}</td><td>${r.end.slice(11, 16)}</td>
+    <td><button data-i="${i}">Log</button></td></tr>`).reverse().join('');
+  const ok = results.filter(r => r.code === 'TOUCH_OK').length;
+  $('sumline').textContent = results.length ? `· ${results.length} tested, ${ok} OK, ${results.length - ok} problem` : '';
+  // pattern: group by result code and by touch chip firmware
+  const by = {}; for (const r of results) by[r.code] = (by[r.code] || 0) + 1;
+  const fw = {}; for (const r of results) { const k = r.tpic || 'unknown'; fw[k] = fw[k] || { ok: 0, bad: 0 }; fw[k][r.code === 'TOUCH_OK' ? 'ok' : 'bad']++; }
+  $('pattern').innerHTML = results.length ? `<b>By result:</b> ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(' · ')}<br><b>By touch chip ID/proj/FW:</b> ${Object.entries(fw).map(([k, n]) => `<span class="mono">${k}</span> ${n.ok} ok / ${n.bad} bad`).join(' · ')}` : '';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+$('rows').onclick = e => { const i = e.target.dataset?.i; if (i != null) download(fname(results[i]), results[i].log); };
+function csv() {
+  const cols = ['num', 'note', 'mac', 'code', 'title', 'tester', 'downs', 'zones', 'chip', 'tpic', 'rd_ok', 'rd_err', 'irq', 'flashed', 'start', 'end'];
+  return [cols.join(',')].concat(results.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))).join('\n');
+}
+function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+$('btnCsv').onclick = () => download('cgotchi-touch-summary.csv', csv());
+$('btnAll').onclick = () => download('cgotchi-touch-all-logs.txt', results.map(r => `===== ${fname(r)} =====\n${r.log}`).join('\n\n'));
+$('btnClear').onclick = () => { if (confirm('Clear all saved device results from this browser?')) { results = []; persist(); renderTable(); } };
+
+if (!('serial' in navigator)) { $('noSerial').hidden = false; $('btnFlash').disabled = $('btnTrack').disabled = true; }
+if (results.length) $('devNum').value = Math.max(...results.map(r => r.num)) + 1;
+newSession(); renderTable();
+</script>
+</body>
+</html>
