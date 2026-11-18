@@ -34,6 +34,9 @@ inline constexpr gpio_num_t kLcdDataCommand = GPIO_NUM_8;
 // The V1.2 schematic puts LCD_RESET on chip pin 24 (GPIO18) and BAT_DET on
 // pin 23 (GPIO17).
 inline constexpr gpio_num_t kLcdReset = GPIO_NUM_18;
+// CST810 INT, open drain from the controller. The factory hardware test reads
+// it as an input with the internal pull-up; it is also a light-sleep wake pin.
+inline constexpr gpio_num_t kTouchInterrupt = GPIO_NUM_1;
 // Drives the NPN that switches the LED string's low side: active high.
 inline constexpr gpio_num_t kBacklight = GPIO_NUM_13;
 

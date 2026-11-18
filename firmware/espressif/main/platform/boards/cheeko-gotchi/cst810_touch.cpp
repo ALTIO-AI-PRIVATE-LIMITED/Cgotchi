@@ -7,6 +7,7 @@
 
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
+#include "esp_log.h"
 
 namespace micropixel::platform::cheeko_gotchi {
 namespace {
@@ -33,6 +34,13 @@ esp_err_t ReadReport(esp_lcd_touch_handle_t touch) {
     }
     const uint16_t x = static_cast<uint16_t>(((report[1] & 0x0fU) << 8U) | report[2]);
     const uint16_t y = static_cast<uint16_t>(((report[3] & 0x0fU) << 8U) | report[4]);
+    // Log each press start once, like the factory test, so touch can be
+    // checked from the serial console.
+    static bool was_down = false;
+    if (fingers != 0U && !was_down) {
+        ESP_LOGI(kTag, "touch down raw x=%u y=%u", x, y);
+    }
+    was_down = fingers != 0U;
     portENTER_CRITICAL(&touch->data.lock);
     touch->data.points = fingers;
     if (fingers != 0U) {

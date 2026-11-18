@@ -3,6 +3,7 @@
 
 #include <cstddef>
 
+#include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "freertos/FreeRTOS.h"
@@ -34,6 +35,9 @@ constexpr int kColumnGap = 24;
 constexpr lcd_rgb_element_order_t kColorOrder = LCD_RGB_ELEMENT_ORDER_BGR;
 // The CST810 intermittently NAKs at 400 kHz while a finger is held.
 constexpr uint32_t kTouchI2cClockHz = 100000U;
+// CST8xx registers (Hynitron CST816 family).
+constexpr uint8_t kCst8xxChipIdRegister = 0xA7U;    // chip id, project id, firmware version
+constexpr uint8_t kCst8xxDisableAutoSleep = 0xFEU;  // non-zero keeps the controller scanning
 
 }  // namespace
 
@@ -144,6 +148,27 @@ esp_err_t DisplayHardware::InitializeTouch(i2c_master_bus_handle_t bus) {
     io_config.lcd_cmd_bits = 8;
     io_config.flags.disable_control_phase = 1;
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(bus, &io_config, &touch_io_), kTag, "create CST810 panel IO failed");
+
+    // Match the factory hardware test, the one firmware that drives this
+    // controller on the line: INT as an input with the pull-up enabled.
+    gpio_config_t interrupt_config{};
+    interrupt_config.pin_bit_mask = 1ULL << board::kTouchInterrupt;
+    interrupt_config.mode = GPIO_MODE_INPUT;
+    interrupt_config.pull_up_en = GPIO_PULLUP_ENABLE;
+    (void)gpio_config(&interrupt_config);
+
+    uint8_t identity[3]{};
+    if (esp_lcd_panel_io_rx_param(touch_io_, kCst8xxChipIdRegister, identity, sizeof(identity)) == ESP_OK) {
+        ESP_LOGI(kTag, "CST810 chip=0x%02x project=0x%02x firmware=0x%02x", identity[0], identity[1], identity[2]);
+    } else {
+        ESP_LOGW(kTag, "CST810 identity read failed");
+    }
+    // Keep the controller out of its own standby, so the first touch after a
+    // quiet spell is reported instead of only waking the scanner.
+    constexpr uint8_t kStayAwake = 0x01U;
+    if (esp_lcd_panel_io_tx_param(touch_io_, kCst8xxDisableAutoSleep, &kStayAwake, 1) != ESP_OK) {
+        ESP_LOGW(kTag, "CST810 auto-sleep disable failed");
+    }
 
     // The controller already reports in the landscape frame: X along the long
     // edge, Y along the short one, in the same direction as the panel.
