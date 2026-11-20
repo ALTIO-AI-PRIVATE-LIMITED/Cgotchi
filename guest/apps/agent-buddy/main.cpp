@@ -21,7 +21,6 @@
 // Controls: tap a row or VOL+ to pick the next session; hold TALK or BOOT to
 // speak; tap SEND or VOL- to press Enter.
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 #include <array>
@@ -67,11 +66,43 @@ struct Session final {
     State state{State::kReady};
 };
 
+// The Guest runtime has no strcmp or snprintf, so the app keeps its own.
+bool Same(const char* left, const char* right) {
+    while (*left != '\0' && *left == *right) {
+        ++left;
+        ++right;
+    }
+    return *left == *right;
+}
+
+// Appends text to a bounded buffer; `length` is the current end.
+void Append(char* out, uint32_t capacity, uint32_t& length, const char* text) {
+    while (*text != '\0' && length + 1U < capacity) {
+        out[length++] = *text++;
+    }
+    out[length] = '\0';
+}
+
+void AppendNumber(char* out, uint32_t capacity, uint32_t& length, uint32_t value) {
+    char digits[11];
+    uint32_t count = 0U;
+    do {
+        digits[count++] = static_cast<char>('0' + value % 10U);
+        value /= 10U;
+    } while (value != 0U);
+    char text[11];
+    for (uint32_t index = 0U; index < count; ++index) {
+        text[index] = digits[count - 1U - index];
+    }
+    text[count] = '\0';
+    Append(out, capacity, length, text);
+}
+
 State ParseState(const char* text) {
-    if (strcmp(text, "working") == 0) return State::kWorking;
-    if (strcmp(text, "needs") == 0) return State::kNeeds;
-    if (strcmp(text, "done") == 0) return State::kDone;
-    if (strcmp(text, "closed") == 0) return State::kClosed;
+    if (Same(text, "working")) return State::kWorking;
+    if (Same(text, "needs")) return State::kNeeds;
+    if (Same(text, "done")) return State::kDone;
+    if (Same(text, "closed")) return State::kClosed;
     return State::kReady;
 }
 
@@ -108,8 +139,12 @@ void CopyField(char* out, uint32_t capacity, const char* text) {
 }
 
 void FormatAddress(uint32_t address, char (&out)[24]) {
-    (void)snprintf(out, sizeof(out), "%u.%u.%u.%u", address & 0xFFU, (address >> 8U) & 0xFFU,
-                   (address >> 16U) & 0xFFU, address >> 24U);
+    uint32_t length = 0U;
+    out[0] = '\0';
+    for (uint32_t octet = 0U; octet < 4U; ++octet) {
+        if (octet != 0U) Append(out, sizeof(out), length, ".");
+        AppendNumber(out, sizeof(out), length, (address >> (octet * 8U)) & 0xFFU);
+    }
 }
 
 micropixel::RoundedRectStyle Style(Color fill, uint32_t radius) {
@@ -235,8 +270,12 @@ class AgentBuddyApp final {
         if (count_ == 0U) {
             CopyField(text, sizeof(text), "Claude Sessions");
         } else {
-            (void)snprintf(text, sizeof(text), "%u run  %u need you", static_cast<unsigned>(working),
-                           static_cast<unsigned>(needs));
+            uint32_t length = 0U;
+            text[0] = '\0';
+            AppendNumber(text, sizeof(text), length, working);
+            Append(text, sizeof(text), length, " run  ");
+            AppendNumber(text, sizeof(text), length, needs);
+            Append(text, sizeof(text), length, " need you");
         }
         header_.SetText(text);
         header_.SetColor(needs != 0U ? kNeeds : kText);
@@ -337,7 +376,11 @@ class AgentBuddyApp final {
         selected_ = index;
         Sound(agent_buddy_sfx::kPress);
         char line[kIdMax + 4U];
-        (void)snprintf(line, sizeof(line), "F\t%s\n", sessions_[index].id);
+        uint32_t length = 0U;
+        line[0] = '\0';
+        Append(line, sizeof(line), length, "F\t");
+        Append(line, sizeof(line), length, sessions_[index].id);
+        Append(line, sizeof(line), length, "\n");
         SendLine(line);
         Refresh();
     }
@@ -479,12 +522,12 @@ class AgentBuddyApp final {
         if (line_length_ > 0U && line[line_length_ - 1U] == '\r') {
             line[line_length_ - 1U] = '\0';
         }
-        if (strcmp(line, "END") == 0) {
+        if (Same(line, "END")) {
             Commit();
             return;
         }
         std::array<char*, 5> fields{};
-        if (Split(line, fields) == 5U && strcmp(fields[0], "R") == 0 && pending_count_ < kMaxSessions) {
+        if (Split(line, fields) == 5U && Same(fields[0], "R") && pending_count_ < kMaxSessions) {
             Session& session = pending_[pending_count_++];
             CopyField(session.id, sizeof(session.id), fields[1]);
             session.state = ParseState(fields[2]);
@@ -518,7 +561,7 @@ class AgentBuddyApp final {
         pending_count_ = 0U;
         synced_ = true;
         for (uint32_t index = 0U; index < count_; ++index) {
-            if (strcmp(sessions_[index].id, selected_id) == 0) {
+            if (Same(sessions_[index].id, selected_id)) {
                 selected_ = index;
             }
         }
@@ -532,7 +575,7 @@ class AgentBuddyApp final {
 
     const Session* Find(const char* id) const {
         for (uint32_t index = 0U; index < count_; ++index) {
-            if (strcmp(sessions_[index].id, id) == 0) {
+            if (Same(sessions_[index].id, id)) {
                 return &sessions_[index];
             }
         }
