@@ -5,6 +5,7 @@
   agent_bridge.py run       keep the Gotchi's list up to date (the service)
   agent_bridge.py hook      called by Claude Code hooks (reads JSON on stdin)
   agent_bridge.py list      print the sessions the Gotchi would show
+  agent_bridge.py name <id> <name>   show this name for a session
 
 Each hook writes ~/.cgotchi/sessions/<session id>.json. `run` sends that list
 to the Agent Buddy App over Wi-Fi (TCP 7333) and, when you pick a session on
@@ -179,7 +180,7 @@ def sessions() -> list[dict]:
         if now - updated > FORGET_S or (record["state"] == "closed" and now - updated > CLOSED_KEEP_S):
             path.unlink(missing_ok=True)
             continue
-        record["name"] = (_transcript_title(record.get("transcript", "")) or record.get("title")
+        record["name"] = (record.get("label") or _transcript_title(record.get("transcript", "")) or record.get("title")
                           or os.path.basename(record.get("cwd", "").rstrip("/")) or "session")
         rows.append(record)
     rows.sort(key=lambda r: (ORDER.get(r.get("state"), 9), -float(r.get("updated") or 0)))
@@ -383,6 +384,17 @@ def main(argv: list[str]) -> int:
         return run(host)
     if command == "install":
         return install()
+    if command == "name" and len(argv) >= 4:
+        # agent_bridge.py name <session id or prefix> <name>: show this name on the Gotchi
+        matches = [p for p in STATE_DIR.glob("*.json") if p.stem.startswith(argv[2])]
+        if len(matches) != 1:
+            print(f"{len(matches)} sessions match {argv[2]!r}; give more of the id")
+            return 1
+        record = json.loads(matches[0].read_text())
+        record["label"] = _clean(" ".join(argv[3:]), 40)
+        matches[0].write_text(json.dumps(record))
+        print(f'{matches[0].stem} is now "{record["label"]}"')
+        return 0
     if command == "list":
         for record in sessions():
             print(f'{record["state"]:8} {record["name"]:20} {record["line"]}')
