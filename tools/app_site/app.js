@@ -459,5 +459,11 @@ $('restartOk').onclick = () => $('restartNotice').close();
 $('fwUpdate').onclick = () => flash('update');
 $('fwFull').onclick = () => confirmThen('Full reset erases every app and setting on this Gotchi, then installs the firmware. You can reinstall apps from this page after. Continue?', () => flash('full'));
 
-const me = await fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null);
-if (me?.email) await enter(me.email); else await showLogin();
+// Public store: browse + install open to everyone; Google sign-in deferred.
+$('login').hidden = true;
+$('appView').hidden = false;
+{ const f = document.querySelector('.foot'); if (f) f.hidden = true;
+  const d = document.querySelector('[data-tab="developers"]'); if (d) d.hidden = true; }
+loadFirmware();
+{ let v = location.hash.slice(1); if (v === 'developers' || v === 'review') v = 'apps'; showView(v); }
+await loadCatalog(); render(); startHero();
