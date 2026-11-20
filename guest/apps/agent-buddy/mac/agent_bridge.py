@@ -93,6 +93,9 @@ def hook() -> int:
         record["pid"], record["tty"] = _claude_process()
     record["id"] = sid[:36]
     record["cwd"] = event.get("cwd") or record.get("cwd") or ""
+    record["transcript"] = event.get("transcript_path") or record.get("transcript") or ""
+    if name == "UserPromptSubmit" and not record.get("title"):
+        record["title"] = _clean(event.get("prompt"), 40)
     state, info = record.get("state", "ready"), record.get("info", "")
     if name == "SessionStart":
         state, info = "ready", "New session"
@@ -128,6 +131,31 @@ def _alive(pid: int) -> bool:
         return False
 
 
+def _transcript_title(path: str) -> str:
+    """The session's /rename title, or Claude's own summary of it."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - 512 * 1024))
+            tail = handle.read().decode(errors="ignore")
+    except (OSError, TypeError):
+        return ""
+    custom, summary = "", ""
+    for line in tail.splitlines():
+        if '"custom-title"' not in line and '"summary"' not in line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("type") == "custom-title" and entry.get("customTitle"):
+            custom = entry["customTitle"]
+        elif entry.get("type") == "summary" and entry.get("summary"):
+            summary = entry["summary"]
+    return custom or summary
+
+
 def _age(seconds: float) -> str:
     seconds = max(0, int(seconds))
     if seconds < 60:
@@ -151,7 +179,8 @@ def sessions() -> list[dict]:
         if now - updated > FORGET_S or (record["state"] == "closed" and now - updated > CLOSED_KEEP_S):
             path.unlink(missing_ok=True)
             continue
-        record["name"] = os.path.basename(record.get("cwd", "").rstrip("/")) or "session"
+        record["name"] = (_transcript_title(record.get("transcript", "")) or record.get("title")
+                          or os.path.basename(record.get("cwd", "").rstrip("/")) or "session")
         rows.append(record)
     rows.sort(key=lambda r: (ORDER.get(r.get("state"), 9), -float(r.get("updated") or 0)))
     seen: dict[str, int] = {}
