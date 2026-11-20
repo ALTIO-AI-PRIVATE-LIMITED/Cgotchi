@@ -75,6 +75,9 @@ bool Same(const char* left, const char* right) {
     return *left == *right;
 }
 
+// The Host rejects a scene with an empty label, so blank text becomes a space.
+const char* NonEmpty(const char* text) { return text[0] == '\0' ? " " : text; }
+
 // Appends text to a bounded buffer; `length` is the current end.
 void Append(char* out, uint32_t capacity, uint32_t& length, const char* text) {
     while (*text != '\0' && length + 1U < capacity) {
@@ -202,7 +205,7 @@ class AgentBuddyApp final {
         height_ = static_cast<int32_t>(info_.height());
         const int32_t margin = 6;
         header_ = scene_.CreateLabel({margin, 4}, "Claude Sessions", kText, SystemFont::kMedium).value();
-        link_ = scene_.CreateLabel({width_ - 112, 6}, "", kMuted, SystemFont::kSmall).value();
+        link_ = scene_.CreateLabel({width_ - 112, 6}, " ", kMuted, SystemFont::kSmall).value();
 
         const int32_t bar_height = 50;
         const int32_t list_top = 28;
@@ -216,15 +219,15 @@ class AgentBuddyApp final {
             row.dot = scene_.CreateRoundedRect({row.rect.x + 8, row.rect.y + row.rect.height / 2 - 6, 12, 12},
                                                Style(kClosed, 6U))
                           .value();
-            row.name = scene_.CreateLabel({row.rect.x + 28, row.rect.y + 3}, "", kText, SystemFont::kMedium).value();
-            row.info = scene_.CreateLabel({row.rect.x + 28, row.rect.y + row.rect.height / 2 + 2}, "", kMuted,
+            row.name = scene_.CreateLabel({row.rect.x + 28, row.rect.y + 3}, " ", kText, SystemFont::kMedium).value();
+            row.info = scene_.CreateLabel({row.rect.x + 28, row.rect.y + row.rect.height / 2 + 2}, " ", kMuted,
                                           SystemFont::kSmall)
                            .value();
-            row.state = scene_.CreateLabel({row.rect.x + row.rect.width - 80, row.rect.y + 4}, "", kText,
+            row.state = scene_.CreateLabel({row.rect.x + row.rect.width - 80, row.rect.y + 4}, " ", kText,
                                            SystemFont::kSmall)
                             .value();
         }
-        empty_ = scene_.CreateLabel({width_ / 2, list_top + row_height_}, "", kMuted, SystemFont::kMedium, true)
+        empty_ = scene_.CreateLabel({width_ / 2, list_top + row_height_}, " ", kMuted, SystemFont::kMedium, true)
                      .value();
 
         const int32_t bar_top = height_ - bar_height - margin;
@@ -310,8 +313,8 @@ class AgentBuddyApp final {
             row.box.SetStrokeWidth(selected ? 2U : 0U);
             row.dot.SetFillColor(StateColor(session.state));
             row.dot.SetStrokeColor(StateColor(session.state));
-            row.name.SetText(session.name);
-            row.info.SetText(session.info);
+            row.name.SetText(NonEmpty(session.name));
+            row.info.SetText(NonEmpty(session.info));
             row.state.SetText(StateText(session.state));
             row.state.SetColor(StateColor(session.state));
         }
@@ -320,9 +323,8 @@ class AgentBuddyApp final {
             empty_.SetText("Start agent_bridge.py on Mac");
         } else if (count_ == 0U) {
             empty_.SetText("No Claude sessions running");
-        } else {
-            empty_.SetText("");
         }
+        empty_.SetVisible(client_ == 0U || count_ == 0U);
         talk_box_.SetFillColor(talking_ ? kTalkActive : kTalk);
         talk_label_.SetText(talking_ ? "LISTENING..." : (ble_connected_ ? "HOLD TO TALK" : "PAIR CGotchi"));
         (void)app_.renderer().Present(scene_);
