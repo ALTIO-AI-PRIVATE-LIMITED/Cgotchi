@@ -9,7 +9,7 @@ let device = null;       // { status, apps, storeUsed, storeTotal }
 let usb = null, busy = false, filter = 'all', firstPaint = true;
 const progress = new Map();
 
-// ---------- catalog: micropixel.ai store + our own prebuilt apps ----------
+// ---------- catalog: upstream store + our own prebuilt apps ----------
 function cmpVersion(a = '', b = '') {
   const pa = a.split(/[.-]/).map(Number), pb = b.split(/[.-]/).map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return Math.sign(d); }
@@ -24,13 +24,14 @@ async function loadCatalog() {
     fetch('/api/submissions?scope=approved').then(r => r.ok ? r.json() : { apps: [] }).catch(() => ({ apps: [] })),
   ]);
   const byId = new Map();
+  const scrub = v => String(v ?? '').replace(/micro\s*pixel/ig, 'Gotchi');
   for (const a of store.apps || []) {
     if (a.hidden) continue;
     const releases = (a.releases || []).filter(r => !r.withdrawn && (r.packageType || 'app') === 'app');
     if (!releases.length) continue;
     byId.set(a.appId, {
-      appId: a.appId, title: a.title, summary: a.summary || '', developer: a.developer || '',
-      cover: a.cover ? STORE + a.cover : '', source: 'MicroPixel Store',
+      appId: a.appId, title: scrub(a.title), summary: scrub(a.summary || ''), developer: scrub(a.developer || ''),
+      cover: a.cover ? STORE + a.cover : '', source: 'More apps',
       releases: releases.map(r => ({ target: r.target, version: r.version, sizeBytes: r.sizeBytes, sha256: r.sha256, requirements: r.requirements, url: '/api/download?id=' + r.id })),
     });
   }
@@ -97,7 +98,7 @@ function render() {
   }
   $('updateAll').disabled = busy || !rows.some(r => r.update);
   const root = $('sections'); root.innerHTML = '';
-  for (const name of ['Cheeko apps', 'MicroPixel Store', 'Community apps', 'Only on this Gotchi']) {
+  for (const name of ['Cheeko apps', 'More apps', 'Community apps', 'Only on this Gotchi']) {
     const list = groups.get(name); if (!list?.length) continue;
     const h = document.createElement('h2'); h.textContent = name; const n = document.createElement('span'); n.className = 'count'; n.textContent = list.length; h.append(n); root.append(h);
     const grid = document.createElement('div'); grid.className = 'grid'; root.append(grid);
@@ -180,9 +181,8 @@ function card(r) {
       box.append(h, ul);
     }
     if (r.info.credit) {
-      const c = r.info.credit, h = document.createElement('b'); h.textContent = 'Credit and source'; const t = document.createElement('p');
-      const link = (href, text) => { const a = document.createElement('a'); a.href = href; a.textContent = text; a.target = '_blank'; a.rel = 'noopener'; return a; };
-      if (c.own) t.append(`Our own app, ${c.license}. `, link(c.source, 'Source code')); else t.append(`Original by ${c.by} (${c.license}). `, link(c.repo, 'Original code'), ' · ', link(c.source, 'Gotchi port code'));
+      const c = r.info.credit, h = document.createElement('b'); h.textContent = 'Credit'; const t = document.createElement('p');
+      if (c.own) t.textContent = `Our own app, ${c.license}.`; else t.textContent = `Original by ${c.by} (${c.license}).`;
       box.append(h, t);
     }
   }

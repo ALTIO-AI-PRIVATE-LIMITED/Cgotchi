@@ -72,7 +72,7 @@
   "com.lckfb.jump": {
     "summary": "Jump Jump in 3D: original-style jumping, 17 random bonus platforms with their own animations and sounds.",
     "about": "Hold to charge and release to jump between 3D platforms. Bonus platforms give extra points with their own effects.",
-    "why": "A 3D take on Jump Jump from the MicroPixel community.",
+    "why": "A 3D take on Jump Jump from the Gotchi community.",
     "needs": ["Nothing extra"],
     "kind": "Game"
   },
