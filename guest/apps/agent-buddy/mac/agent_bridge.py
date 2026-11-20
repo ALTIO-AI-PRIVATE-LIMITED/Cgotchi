@@ -323,7 +323,7 @@ def sessions() -> list[dict]:
         seen[record["name"]] = seen.get(record["name"], 0) + 1
         if seen[record["name"]] > 1:
             record["name"] = f'{record["name"]} #{seen[record["name"]]}'
-        record["line"] = (("Cloud: " if record.get("cloud") else "") + f'{record.get("info", "")}')[:22] + " " + \
+        record["line"] = (("Cloud - " if record.get("cloud") else "") + f'{record.get("info", "")}')[:32] + " " + \
             _age(now - float(record.get("updated") or now))
     return rows[:12]
 
@@ -333,7 +333,7 @@ def _field(text: str, limit: int) -> str:
 
 
 def snapshot() -> bytes:
-    lines = [f'R\t{r["id"]}\t{r["state"]}\t{_field(r["name"], 18)}\t{_field(r["line"], 30)}' for r in sessions()]
+    lines = [f'R\t{r["id"]}\t{r["state"]}\t{_field(r["name"], 40)}\t{_field(r["line"], 40)}' for r in sessions()]
     return ("\n".join(lines + ["END"]) + "\n").encode()
 
 

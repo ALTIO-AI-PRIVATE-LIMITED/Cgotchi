@@ -18,8 +18,8 @@
 // Lines to the Mac:
 //   F\t<id>\n                             focus that session's terminal
 //
-// Controls: tap a row or VOL+ to pick the next session; hold TALK or BOOT to
-// speak; tap SEND or VOL- to press Enter.
+// Controls: swipe the list to scroll, tap a card or VOL+ to pick a session;
+// hold "Hold to talk" or BOOT to speak; tap Send or VOL- to press Enter.
 #include <stdint.h>
 #include <string.h>
 
@@ -38,24 +38,38 @@ using micropixel::SystemFont;
 
 constexpr uint16_t kPort = 7333U;
 constexpr uint32_t kMaxSessions = 12U;
-constexpr uint32_t kVisibleRows = 4U;
+constexpr uint32_t kVisibleRows = 3U;
 constexpr uint32_t kIdMax = 40U;
-constexpr uint32_t kNameMax = 18U;
-constexpr uint32_t kInfoMax = 30U;
-constexpr uint32_t kLineMax = 160U;
+constexpr uint32_t kNameMax = 40U;
+constexpr uint32_t kInfoMax = 40U;
+constexpr uint32_t kLineMax = 200U;
 
-constexpr Color kBackground = Color::Rgb(14U, 16U, 22U);
-constexpr Color kRow = Color::Rgb(30U, 34U, 44U);
-constexpr Color kRowSelected = Color::Rgb(52U, 60U, 82U);
-constexpr Color kText = Color::Rgb(238U, 240U, 244U);
-constexpr Color kMuted = Color::Rgb(150U, 158U, 172U);
-constexpr Color kWorking = Color::Rgb(64U, 140U, 255U);
-constexpr Color kNeeds = Color::Rgb(250U, 166U, 26U);
-constexpr Color kDone = Color::Rgb(72U, 200U, 120U);
-constexpr Color kClosed = Color::Rgb(90U, 96U, 110U);
-constexpr Color kTalk = Color::Rgb(64U, 120U, 255U);
-constexpr Color kTalkActive = Color::Rgb(230U, 60U, 90U);
-constexpr Color kSend = Color::Rgb(37U, 185U, 76U);
+// Layout for the 296x240 glass with 60 px corners.
+constexpr uint32_t kCornerRadius = 60U;
+constexpr int32_t kTitleInset = 26;
+constexpr int32_t kSideMargin = 12;
+constexpr int32_t kPillWidth = 132;
+constexpr int32_t kListTop = 60;
+constexpr int32_t kCardHeight = 40;
+constexpr int32_t kCardPitch = 45;
+constexpr int32_t kBadgeWidth = 66;
+constexpr int32_t kButtonInset = 34;
+constexpr int32_t kButtonHeight = 30;
+constexpr int32_t kDragSlop = 10;
+
+// Dark palette in the spirit of iOS system colours.
+constexpr Color kBackground = Color::Rgb(4U, 4U, 6U);  // outside the corner curve
+constexpr Color kPage = Color::Rgb(16U, 16U, 20U);
+constexpr Color kCard = Color::Rgb(30U, 30U, 36U);
+constexpr Color kCardSelected = Color::Rgb(42U, 44U, 54U);
+constexpr Color kPill = Color::Rgb(38U, 38U, 44U);
+constexpr Color kText = Color::Rgb(245U, 245U, 247U);
+constexpr Color kSecondary = Color::Rgb(142U, 142U, 147U);
+constexpr Color kAccent = Color::Rgb(10U, 132U, 255U);
+constexpr Color kWorking = Color::Rgb(10U, 132U, 255U);
+constexpr Color kNeeds = Color::Rgb(255U, 159U, 10U);
+constexpr Color kDone = Color::Rgb(48U, 209U, 88U);
+constexpr Color kClosed = Color::Rgb(99U, 99U, 102U);
 
 enum class State : uint8_t { kWorking, kNeeds, kDone, kReady, kClosed };
 
@@ -199,51 +213,96 @@ class AgentBuddyApp final {
 
    private:
     // ---- UI ----
+    //
+    // The glass has 60 px rounded corners: the page is a 60 px rounded card
+    // on near-black, titles start 26 px in, the status pill sits top centre
+    // and the buttons sit bottom centre, all clear of the curve.
 
     void BuildUi() {
         width_ = static_cast<int32_t>(info_.width());
         height_ = static_cast<int32_t>(info_.height());
-        const int32_t margin = 6;
-        header_ = scene_.CreateLabel({margin, 4}, "Claude Sessions", kText, SystemFont::kMedium).value();
-        link_ = scene_.CreateLabel({width_ - 112, 6}, " ", kMuted, SystemFont::kSmall).value();
+        (void)scene_.CreateRoundedRect({0, 0, width_, height_}, Style(kPage, kCornerRadius)).value();
 
-        const int32_t bar_height = 50;
-        const int32_t list_top = 28;
-        const int32_t list_bottom = height_ - bar_height - margin * 2;
-        row_height_ = (list_bottom - list_top) / static_cast<int32_t>(kVisibleRows);
-        for (uint32_t index = 0U; index < kVisibleRows; ++index) {
-            Row& row = rows_[index];
-            row.rect = {margin, list_top + static_cast<int32_t>(index) * row_height_, width_ - margin * 2,
-                        row_height_ - 4};
-            row.box = scene_.CreateRoundedRect(row.rect, Style(kRow, 10U)).value();
-            row.dot = scene_.CreateRoundedRect({row.rect.x + 8, row.rect.y + row.rect.height / 2 - 6, 12, 12},
-                                               Style(kClosed, 6U))
+        // Status pill, top centre.
+        pill_rect_ = {width_ / 2 - kPillWidth / 2, 7, kPillWidth, 20};
+        (void)scene_.CreateRoundedRect(pill_rect_, Style(kPill, 10U)).value();
+        pill_dot_ = scene_.CreateRoundedRect({pill_rect_.x + 9, pill_rect_.y + 7, 6, 6}, Style(kNeeds, 3U)).value();
+        pill_label_ = scene_
+                          .CreateLabel({pill_rect_.center_x() + 5, pill_rect_.y + 5}, " ", kSecondary, SystemFont::kSmall,
+                                       true)
                           .value();
-            row.name = scene_.CreateLabel({row.rect.x + 28, row.rect.y + 3}, " ", kText, SystemFont::kMedium).value();
-            row.info = scene_.CreateLabel({row.rect.x + 28, row.rect.y + row.rect.height / 2 + 2}, " ", kMuted,
-                                          SystemFont::kSmall)
-                           .value();
-            row.state = scene_.CreateLabel({row.rect.x + row.rect.width - 80, row.rect.y + 4}, " ", kText,
-                                           SystemFont::kSmall)
-                            .value();
-        }
-        empty_ = scene_.CreateLabel({width_ / 2, list_top + row_height_}, " ", kMuted, SystemFont::kMedium, true)
-                     .value();
 
-        const int32_t bar_top = height_ - bar_height - margin;
-        const int32_t button_width = (width_ - margin * 3) / 2;
-        talk_rect_ = {margin, bar_top, button_width, bar_height};
-        send_rect_ = {margin * 2 + button_width, bar_top, button_width, bar_height};
-        talk_box_ = scene_.CreateRoundedRect(talk_rect_, Style(kTalk, 16U)).value();
-        (void)scene_.CreateRoundedRect(send_rect_, Style(kSend, 16U)).value();
+        // Large title, 26 px from the edge, with the Gotchi's address on the right.
+        (void)scene_.CreateLabel({kTitleInset, 34}, "Sessions", kText, SystemFont::kTitle).value();
+        address_ = scene_.CreateLabel({width_ - kTitleInset - 70, 40}, " ", kSecondary, SystemFont::kSmall).value();
+
+        // Session cards.
+        for (uint32_t index = 0U; index < kVisibleRows; ++index) {
+            Card& card = cards_[index];
+            card.rect = {kSideMargin, kListTop + static_cast<int32_t>(index) * kCardPitch, width_ - kSideMargin * 2,
+                         kCardHeight};
+            card.box = scene_.CreateRoundedRect(card.rect, Style(kCard, 12U)).value();
+            card.dot = scene_.CreateRoundedRect({card.rect.x + 11, card.rect.y + 16, 8, 8}, Style(kClosed, 4U)).value();
+            card.name = scene_.CreateLabel({card.rect.x + 27, card.rect.y + 6}, " ", kText, SystemFont::kLarge).value();
+            card.info =
+                scene_.CreateLabel({card.rect.x + 27, card.rect.y + 24}, " ", kSecondary, SystemFont::kSmall).value();
+            const Rect badge{card.rect.x + card.rect.width - kBadgeWidth - 8, card.rect.y + 11, kBadgeWidth, 18};
+            card.badge = scene_.CreateRoundedRect(badge, Style(kCard, 9U)).value();
+            card.state = scene_
+                             .CreateLabel({badge.center_x(), badge.y + 4}, " ", kText, SystemFont::kSmall, true)
+                             .value();
+        }
+
+        // Thin scroll bar to the right of the cards.
+        const int32_t list_height = kCardPitch * static_cast<int32_t>(kVisibleRows) - (kCardPitch - kCardHeight);
+        track_rect_ = {width_ - kSideMargin + 3, kListTop + 4, 3, list_height - 8};
+        track_ = scene_.CreateRoundedRect(track_rect_, Style(kPill, 1U)).value();
+        thumb_ = scene_.CreateRoundedRect(track_rect_, Style(kClosed, 1U)).value();
+
+        // Empty state, in the middle of the list area.
+        empty_title_ = scene_
+                           .CreateLabel({width_ / 2, kListTop + 36}, "No sessions yet", kText, SystemFont::kLarge, true)
+                           .value();
+        empty_hint_ = scene_
+                          .CreateLabel({width_ / 2, kListTop + 58}, " ", kSecondary, SystemFont::kSmall, true)
+                          .value();
+
+        // Buttons, bottom centre, clear of the corner curve.
+        const int32_t button_top = height_ - kButtonHeight - 9;
+        const int32_t button_width = (width_ - kButtonInset * 2 - 8) / 2;
+        talk_rect_ = {kButtonInset, button_top, button_width, kButtonHeight};
+        send_rect_ = {kButtonInset + button_width + 8, button_top, button_width, kButtonHeight};
+        talk_box_ = scene_.CreateRoundedRect(talk_rect_, Style(kAccent, kButtonHeight / 2U)).value();
+        (void)scene_.CreateRoundedRect(send_rect_, Style(kCard, kButtonHeight / 2U)).value();
         talk_label_ = scene_
-                          .CreateLabel({talk_rect_.center_x(), talk_rect_.y + bar_height / 2 - 10}, "HOLD TO TALK",
-                                       Color::White(), SystemFont::kMedium, true)
+                          .CreateLabel({talk_rect_.center_x(), talk_rect_.y + 8}, "Hold to talk", Color::White(),
+                                       SystemFont::kMedium, true)
                           .value();
         (void)scene_
-            .CreateLabel({send_rect_.center_x(), send_rect_.y + bar_height / 2 - 10}, "SEND", Color::White(),
-                         SystemFont::kMedium, true)
+            .CreateLabel({send_rect_.center_x(), send_rect_.y + 8}, "Send", kAccent, SystemFont::kMedium, true)
             .value();
+    }
+
+    // Cuts `text` with ".." so it fits `max_width` pixels in `font`.
+    void Fit(const char* text, SystemFont font, int32_t max_width, char* out, uint32_t capacity) const {
+        CopyField(out, capacity, NonEmpty(text));
+        uint32_t length = static_cast<uint32_t>(strlen(out));
+        for (;;) {
+            const auto measured = app_.renderer().MeasureText(out, font);
+            if (!measured || static_cast<int32_t>(measured->width) <= max_width || length <= 3U) {
+                return;
+            }
+            // Drop one character before the "..", trimming any trailing space.
+            const uint32_t keep = (out[length - 1U] == '.' && out[length - 2U] == '.') ? length - 3U : length - 1U;
+            uint32_t end = keep;
+            while (end > 1U && out[end - 1U] == ' ') {
+                --end;
+            }
+            out[end] = '.';
+            out[end + 1U] = '.';
+            out[end + 2U] = '\0';
+            length = end + 2U;
+        }
     }
 
     void Refresh() {
@@ -255,14 +314,16 @@ class AgentBuddyApp final {
         if (!net || !net->available) {
             CopyField(text, sizeof(text), "No Wi-Fi");
         } else if (!net->station_connected) {
-            CopyField(text, sizeof(text), net->station_connecting ? "Wi-Fi..." : "Join Wi-Fi");
+            CopyField(text, sizeof(text), net->station_connecting ? "Joining Wi-Fi" : "Join Wi-Fi");
         } else {
             char address[24];
             FormatAddress(net->station_address, address);
             CopyField(text, sizeof(text), address);
         }
-        link_.SetText(text);
-        link_.SetColor(client_ != 0U ? kDone : kNeeds);
+        address_.SetText(text);
+        if (const auto measured = app_.renderer().MeasureText(text, SystemFont::kSmall)) {
+            address_.SetPosition({width_ - kTitleInset - static_cast<int32_t>(measured->width), 40});
+        }
 
         uint32_t working = 0U;
         uint32_t needs = 0U;
@@ -270,97 +331,158 @@ class AgentBuddyApp final {
             working += sessions_[index].state == State::kWorking ? 1U : 0U;
             needs += sessions_[index].state == State::kNeeds ? 1U : 0U;
         }
-        if (count_ == 0U) {
-            CopyField(text, sizeof(text), "Claude Sessions");
-        } else {
-            uint32_t length = 0U;
-            text[0] = '\0';
-            AppendNumber(text, sizeof(text), length, working);
-            Append(text, sizeof(text), length, " run  ");
+        uint32_t length = 0U;
+        text[0] = '\0';
+        if (client_ == 0U) {
+            Append(text, sizeof(text), length, "Mac not connected");
+        } else if (needs != 0U) {
             AppendNumber(text, sizeof(text), length, needs);
             Append(text, sizeof(text), length, " need you");
+        } else if (working != 0U) {
+            AppendNumber(text, sizeof(text), length, working);
+            Append(text, sizeof(text), length, " working");
+        } else {
+            Append(text, sizeof(text), length, count_ == 0U ? "Mac connected" : "All done");
         }
-        header_.SetText(text);
-        header_.SetColor(needs != 0U ? kNeeds : kText);
+        pill_label_.SetText(text);
+        pill_label_.SetColor(needs != 0U ? kNeeds : kSecondary);
+        pill_dot_.SetFillColor(client_ == 0U ? kClosed : (needs != 0U ? kNeeds : (working != 0U ? kWorking : kDone)));
 
         if (selected_ >= count_) {
             selected_ = count_ == 0U ? 0U : count_ - 1U;
         }
-        if (selected_ < first_) {
-            first_ = selected_;
-        } else if (selected_ >= first_ + kVisibleRows) {
-            first_ = selected_ - kVisibleRows + 1U;
+        if (follow_selection_) {
+            if (selected_ < first_) {
+                first_ = selected_;
+            } else if (selected_ >= first_ + kVisibleRows) {
+                first_ = selected_ - kVisibleRows + 1U;
+            }
+            follow_selection_ = false;
         }
-        if (first_ + kVisibleRows > count_) {
-            first_ = count_ > kVisibleRows ? count_ - kVisibleRows : 0U;
+        const uint32_t max_first = count_ > kVisibleRows ? count_ - kVisibleRows : 0U;
+        if (first_ > max_first) {
+            first_ = max_first;
         }
+
         for (uint32_t index = 0U; index < kVisibleRows; ++index) {
-            Row& row = rows_[index];
+            Card& card = cards_[index];
             const uint32_t session_index = first_ + index;
             const bool shown = session_index < count_;
-            row.box.SetVisible(shown);
-            row.dot.SetVisible(shown);
-            row.name.SetVisible(shown);
-            row.info.SetVisible(shown);
-            row.state.SetVisible(shown);
+            card.box.SetVisible(shown);
+            card.dot.SetVisible(shown);
+            card.name.SetVisible(shown);
+            card.info.SetVisible(shown);
+            card.badge.SetVisible(shown);
+            card.state.SetVisible(shown);
             if (!shown) {
                 continue;
             }
             const Session& session = sessions_[session_index];
             const bool selected = session_index == selected_;
-            row.box.SetFillColor(selected ? kRowSelected : kRow);
-            row.box.SetStrokeColor(selected ? Color::White() : kRow);
-            row.box.SetStrokeWidth(selected ? 2U : 0U);
-            row.dot.SetFillColor(StateColor(session.state));
-            row.dot.SetStrokeColor(StateColor(session.state));
-            row.name.SetText(NonEmpty(session.name));
-            row.info.SetText(NonEmpty(session.info));
-            row.state.SetText(StateText(session.state));
-            row.state.SetColor(StateColor(session.state));
+            const Color color = StateColor(session.state);
+            card.box.SetFillColor(selected ? kCardSelected : kCard);
+            card.box.SetStrokeColor(selected ? kAccent : kCard);
+            card.box.SetStrokeWidth(selected ? 2U : 0U);
+            card.dot.SetFillColor(color);
+            card.dot.SetStrokeColor(color);
+            char fitted[kNameMax + 4U];
+            Fit(session.name, SystemFont::kLarge, card.rect.width - 27 - kBadgeWidth - 14, fitted, sizeof(fitted));
+            card.name.SetText(fitted);
+            Fit(session.info, SystemFont::kSmall, card.rect.width - 27 - kBadgeWidth - 14, fitted, sizeof(fitted));
+            card.info.SetText(fitted);
+            const Color tint = Color::Mix(color, selected ? kCardSelected : kCard, 60U);
+            card.badge.SetFillColor(tint);
+            card.badge.SetStrokeColor(tint);
+            card.state.SetText(StateText(session.state));
+            card.state.SetColor(color);
         }
 
-        if (client_ == 0U) {
-            empty_.SetText("Start agent_bridge.py on Mac");
-        } else if (count_ == 0U) {
-            empty_.SetText("No Claude sessions running");
+        const bool scrollable = count_ > kVisibleRows;
+        track_.SetVisible(scrollable);
+        thumb_.SetVisible(scrollable);
+        if (scrollable) {
+            const int32_t thumb_height = track_rect_.height * static_cast<int32_t>(kVisibleRows) /
+                                         static_cast<int32_t>(count_);
+            const int32_t travel = track_rect_.height - thumb_height;
+            const int32_t offset = travel * static_cast<int32_t>(first_) / static_cast<int32_t>(max_first);
+            thumb_.SetRect({track_rect_.x, track_rect_.y + offset, track_rect_.width, thumb_height});
         }
-        empty_.SetVisible(client_ == 0U || count_ == 0U);
-        talk_box_.SetFillColor(talking_ ? kTalkActive : kTalk);
-        talk_label_.SetText(talking_ ? "LISTENING..." : (ble_connected_ ? "HOLD TO TALK" : "PAIR CGotchi"));
+
+        const bool empty = client_ == 0U || count_ == 0U;
+        empty_title_.SetVisible(empty);
+        empty_hint_.SetVisible(empty);
+        empty_title_.SetText(client_ == 0U ? "Waiting for your Mac" : "No sessions yet");
+        empty_hint_.SetText(client_ == 0U ? "Start agent_bridge.py on the Mac" : "Start claude on your Mac");
+
+        talk_box_.SetFillColor(talking_ ? kNeeds : (ble_connected_ ? kAccent : kClosed));
+        talk_label_.SetText(talking_ ? "Listening..." : (ble_connected_ ? "Hold to talk" : "Pair CGotchi"));
         (void)app_.renderer().Present(scene_);
     }
 
     // ---- Input ----
+    //
+    // Swipe the list up or down to scroll, tap a card to pick it. VOL+ picks
+    // the next session, VOL- sends Enter, BOOT is push to talk.
 
     void HandleTouch(const micropixel::TouchEvent& touch) {
         const auto point = touch.position();
-        if (touch.phase() == micropixel::TouchPhase::kDown) {
-            if (talk_rect_.contains(point)) {
-                BeginTalk();
-                return;
-            }
-            if (send_rect_.contains(point)) {
-                SendEnter();
-                return;
-            }
-            for (uint32_t index = 0U; index < kVisibleRows; ++index) {
-                if (first_ + index < count_ && rows_[index].rect.contains(point)) {
-                    Select(first_ + index);
-                    return;
+        switch (touch.phase()) {
+            case micropixel::TouchPhase::kDown:
+                if (talk_rect_.contains(point)) {
+                    BeginTalk();
+                } else if (send_rect_.contains(point)) {
+                    SendEnter();
+                } else if (point.y >= kListTop - 6 && point.y < talk_rect_.y - 4) {
+                    in_list_ = true;
+                    dragged_ = false;
+                    touch_start_y_ = point.y;
+                    drag_first_ = first_;
                 }
-            }
-        } else if (touch.phase() == micropixel::TouchPhase::kUp ||
-                   touch.phase() == micropixel::TouchPhase::kCancel) {
-            EndTalk();
+                break;
+            case micropixel::TouchPhase::kMove:
+                if (in_list_) {
+                    const int32_t dy = point.y - touch_start_y_;
+                    if (dy > kDragSlop || dy < -kDragSlop) {
+                        dragged_ = true;
+                    }
+                    if (dragged_) {
+                        // Finger up moves the list up, like on a phone.
+                        const int32_t rows = -dy / kCardPitch;
+                        int32_t first = static_cast<int32_t>(drag_first_) + rows;
+                        const int32_t max_first = count_ > kVisibleRows ? static_cast<int32_t>(count_ - kVisibleRows) : 0;
+                        first = first < 0 ? 0 : (first > max_first ? max_first : first);
+                        if (static_cast<uint32_t>(first) != first_) {
+                            first_ = static_cast<uint32_t>(first);
+                            Refresh();
+                        }
+                    }
+                }
+                break;
+            case micropixel::TouchPhase::kUp:
+                if (in_list_ && !dragged_) {
+                    for (uint32_t index = 0U; index < kVisibleRows; ++index) {
+                        if (first_ + index < count_ && cards_[index].rect.contains(point)) {
+                            Select(first_ + index, false);
+                            break;
+                        }
+                    }
+                }
+                in_list_ = false;
+                EndTalk();
+                break;
+            case micropixel::TouchPhase::kCancel:
+                in_list_ = false;
+                EndTalk();
+                break;
         }
     }
 
     void HandleKey(const micropixel::KeyEvent& key) {
         const bool down = key.phase() == micropixel::KeyPhase::kDown;
         const bool repeat = key.phase() == micropixel::KeyPhase::kRepeat;
-        if (key.code() == micropixel::KeyCode::kRight && down) {
+        if (key.code() == micropixel::KeyCode::kRight && (down || repeat)) {
             if (count_ != 0U) {
-                Select(selected_ + 1U < count_ ? selected_ + 1U : 0U);
+                Select(selected_ + 1U < count_ ? selected_ + 1U : 0U, true);
             }
         } else if (key.code() == micropixel::KeyCode::kLeft && down) {
             SendEnter();
@@ -371,11 +493,12 @@ class AgentBuddyApp final {
         }
     }
 
-    void Select(uint32_t index) {
+    void Select(uint32_t index, bool follow) {
         if (index >= count_) {
             return;
         }
         selected_ = index;
+        follow_selection_ = follow;
         Sound(agent_buddy_sfx::kPress);
         char line[kIdMax + 4U];
         uint32_t length = 0U;
@@ -584,12 +707,13 @@ class AgentBuddyApp final {
         return nullptr;
     }
 
-    struct Row final {
+    struct Card final {
         Rect rect{};
         micropixel::RoundedRectNode box;
         micropixel::RoundedRectNode dot;
         micropixel::LabelNode name;
         micropixel::LabelNode info;
+        micropixel::RoundedRectNode badge;
         micropixel::LabelNode state;
     };
 
@@ -600,17 +724,28 @@ class AgentBuddyApp final {
     micropixel::RendererInfo info_;
     micropixel::Scene scene_;
     micropixel::Timer poll_;
-    micropixel::LabelNode header_;
-    micropixel::LabelNode link_;
-    micropixel::LabelNode empty_;
+    Rect pill_rect_{};
+    micropixel::RoundedRectNode pill_dot_;
+    micropixel::LabelNode pill_label_;
+    micropixel::LabelNode address_;
+    std::array<Card, kVisibleRows> cards_{};
+    Rect track_rect_{};
+    micropixel::RoundedRectNode track_;
+    micropixel::RoundedRectNode thumb_;
+    micropixel::LabelNode empty_title_;
+    micropixel::LabelNode empty_hint_;
     micropixel::RoundedRectNode talk_box_;
     micropixel::LabelNode talk_label_;
-    std::array<Row, kVisibleRows> rows_{};
     Rect talk_rect_{};
     Rect send_rect_{};
     int32_t width_{};
     int32_t height_{};
-    int32_t row_height_{};
+
+    bool in_list_{};
+    bool dragged_{};
+    int32_t touch_start_y_{};
+    uint32_t drag_first_{};
+    bool follow_selection_{};
 
     std::array<Session, kMaxSessions> sessions_{};
     std::array<Session, kMaxSessions> pending_{};
