@@ -24,6 +24,9 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 PORT = 7333
@@ -166,6 +169,127 @@ def _age(seconds: float) -> str:
     return f"{seconds // 3600}h"
 
 
+# ---------------------------------------------------------------- other sources
+
+CLOUD_EVERY_S = 20.0
+AGENTS_EVERY_S = 5.0
+_cloud: tuple[float, list[dict]] = (0.0, [])
+_agents: tuple[float, list[dict]] = (0.0, [])
+_cloud_note = ""
+
+
+def _note(text: str) -> None:
+    global _cloud_note
+    if text != _cloud_note:
+        _cloud_note = text
+        print(text, flush=True)
+
+
+def _oauth() -> tuple[str, str] | None:
+    """The Claude Code sign-in (kept in memory only) and the account's organization."""
+    try:
+        raw = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                             capture_output=True, text=True, timeout=5).stdout
+        oauth = json.loads(raw).get("claudeAiOauth", {})
+        org = json.loads((HOME / ".claude.json").read_text())["oauthAccount"]["organizationUuid"]
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return None
+    token = oauth.get("accessToken") or ""
+    if not token or float(oauth.get("expiresAt") or 0) / 1000 < time.time():
+        return None
+    return token, org
+
+
+def _when(stamp: str | None) -> float:
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def cloud_sessions() -> list[dict]:
+    """Cloud and Remote Control sessions of this Claude account.
+
+    Uses the private claude.ai endpoint the Claude Code CLI uses for its own
+    session list. It is not a documented API and can change with any update;
+    on any error the Gotchi simply shows local sessions only.
+    """
+    global _cloud
+    now = time.time()
+    if now - _cloud[0] < CLOUD_EVERY_S:
+        return _cloud[1]
+    rows: list[dict] = []
+    auth = _oauth()
+    if auth is None:
+        _note("cloud sessions off: Claude Code is not signed in (run: claude auth login)")
+    else:
+        request = urllib.request.Request(
+            "https://api.anthropic.com/v1/code/sessions?" + urllib.parse.urlencode({"limit": "100"}),
+            headers={"Authorization": f"Bearer {auth[0]}", "anthropic-version": "2023-06-01",
+                     "x-organization-uuid": auth[1]})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                data = json.load(response).get("data", [])
+            _note(f"cloud sessions on ({len(data)} in account)")
+        except Exception as error:  # the private API may change; never stop the bridge
+            _note(f"cloud sessions unavailable: {error}")
+            data = None
+        if data is None:
+            return _cloud[1]
+        for item in data:
+            if item.get("status") == "archived" or not str(item.get("id", "")).startswith("cse_"):
+                continue
+            bucket = str(item.get("status_bucket") or "")
+            worker = str(item.get("worker_status") or "")
+            if bucket in ("working", "running", "in_progress") or worker in ("running", "busy", "working"):
+                state = "working"
+            elif bucket in ("blocked", "needs_action", "needs_input"):
+                state = "needs"
+            else:
+                state = "done"
+            rows.append({"id": item["id"][:40], "state": state, "cloud": True,
+                         "name": str(item.get("title") or "Cloud session"),
+                         "info": str(item.get("status_line") or ("idle" if item.get("environment_kind") == "anthropic_cloud" else "Remote Control")),
+                         "updated": _when(item.get("last_event_at") or item.get("updated_at"))})
+    _cloud = (now, rows)
+    return rows
+
+
+def _transcript_for(cwd: str, sid: str) -> str:
+    return str(PROJECTS_DIR / re.sub(r"[^A-Za-z0-9]", "-", cwd) / f"{sid}.jsonl")
+
+
+def agent_sessions(known: set[str]) -> list[dict]:
+    """Local sessions from `claude agents --json`, for those the hooks have not recorded."""
+    global _agents
+    now = time.time()
+    if now - _agents[0] >= AGENTS_EVERY_S:
+        found: list[dict] = []
+        claude = shutil.which("claude") or str(HOME / ".local" / "bin" / "claude")
+        try:
+            out = subprocess.run([claude, "agents", "--json"], capture_output=True, text=True, timeout=15).stdout
+            for item in json.loads(out or "[]"):
+                sid = str(item.get("sessionId") or "")
+                if not sid:
+                    continue
+                pid = int(item.get("pid") or 0)
+                info = _ps(pid) if pid else None
+                tty = "" if info is None or info[1] in ("??", "?") else "/dev/" + info[1]
+                busy = item.get("status") == "busy"
+                cwd = str(item.get("cwd") or "")
+                found.append({"id": sid[:36], "pid": pid, "tty": tty, "cwd": cwd,
+                              "transcript": _transcript_for(cwd, sid),
+                              "state": "working" if busy else "done", "info": "Working" if busy else "Your turn",
+                              "updated": now})
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        _agents = (now, found)
+    return [r for r in _agents[1] if r["id"] not in known]
+
+
+PROJECTS_DIR = HOME / ".claude" / "projects"
+
+
 def sessions() -> list[dict]:
     now = time.time()
     rows = []
@@ -183,13 +307,21 @@ def sessions() -> list[dict]:
         record["name"] = (record.get("label") or _transcript_title(record.get("transcript", "")) or record.get("title")
                           or os.path.basename(record.get("cwd", "").rstrip("/")) or "session")
         rows.append(record)
-    rows.sort(key=lambda r: (ORDER.get(r.get("state"), 9), -float(r.get("updated") or 0)))
+    known = {r["id"] for r in rows}
+    for record in agent_sessions(known):
+        record["name"] = (_transcript_title(record["transcript"])
+                          or os.path.basename(record["cwd"].rstrip("/")) or "session")
+        rows.append(record)
+    local_names = {r["name"] for r in rows}
+    rows += [r for r in cloud_sessions() if r["name"] not in local_names]
+    rows.sort(key=lambda r: (ORDER.get(r.get("state"), 9), bool(r.get("cloud")), -float(r.get("updated") or 0)))
     seen: dict[str, int] = {}
     for record in rows:
         seen[record["name"]] = seen.get(record["name"], 0) + 1
         if seen[record["name"]] > 1:
             record["name"] = f'{record["name"]} #{seen[record["name"]]}'
-        record["line"] = f'{record.get("info", "")}'[:22] + " " + _age(now - float(record.get("updated") or now))
+        record["line"] = (("Cloud: " if record.get("cloud") else "") + f'{record.get("info", "")}')[:22] + " " + \
+            _age(now - float(record.get("updated") or now))
     return rows[:12]
 
 
@@ -213,6 +345,10 @@ def _osascript(script: str) -> None:
 
 
 def focus(session_id: str) -> None:
+    if session_id.startswith("cse_"):
+        # A cloud or Remote Control session: open it in the Claude app or browser.
+        subprocess.run(["open", "https://claude.ai/code/session_" + session_id[4:]], capture_output=True, timeout=5)
+        return
     path = STATE_DIR / (re.sub(r"[^A-Za-z0-9_-]", "", session_id) + ".json")
     try:
         tty = json.loads(path.read_text()).get("tty", "")

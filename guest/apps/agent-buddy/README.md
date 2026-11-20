@@ -37,5 +37,17 @@ the next command by voice.
 
 `agent_bridge.py list` prints what the Gotchi should show.
 
+## What is listed
+
+- Local sessions: from the hooks, plus `claude agents --json` for sessions
+  started before the hooks were installed.
+- Cloud and Remote Control sessions of your Claude account (marked
+  "Cloud:"). Tapping one opens it in the Claude app or browser. This uses the
+  Claude Code sign-in (`claude auth login`) and the private endpoint the CLI
+  uses for its own session list, so it can stop working after a Claude
+  update; the local list keeps working either way.
+- Not listed: claude.ai project threads and chats. They are not in any API
+  the Mac can reach.
+
 Works with Claude Code sessions in Terminal and iTerm2. Sessions in other
 apps are listed, but picking them does not switch windows.
