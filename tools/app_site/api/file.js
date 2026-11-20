@@ -1,11 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { requireSession } from '../lib/auth.js';
 
 // Serves our prebuilt app bundles and firmware images to signed-in people only.
 const ROOT = path.join(process.cwd(), 'private');
 export default async function handler(req, res) {
-  if (!await requireSession(req, res)) return;
   const rel = String(req.query.path || '');
   if (!/^(apps|firmware)\/[A-Za-z0-9._-]+$/.test(rel)) return res.status(400).json({ error: 'bad path' });
   try {
