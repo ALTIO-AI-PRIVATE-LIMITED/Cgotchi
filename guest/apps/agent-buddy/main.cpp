@@ -38,37 +38,39 @@ using micropixel::SystemFont;
 
 constexpr uint16_t kPort = 7333U;
 constexpr uint32_t kMaxSessions = 12U;
-constexpr uint32_t kVisibleRows = 3U;
 constexpr uint32_t kIdMax = 40U;
 constexpr uint32_t kNameMax = 40U;
 constexpr uint32_t kInfoMax = 40U;
 constexpr uint32_t kLineMax = 200U;
 
 // Layout for the 296x240 glass with 60 px corners.
+// Glass rules: 60 px page corners, titles 26 px in, 12 px side margin.
 constexpr uint32_t kCornerRadius = 60U;
 constexpr int32_t kTitleInset = 26;
 constexpr int32_t kSideMargin = 12;
-constexpr int32_t kPillWidth = 132;
-constexpr int32_t kListTop = 60;
-constexpr int32_t kCardHeight = 40;
-constexpr int32_t kCardPitch = 45;
-constexpr int32_t kBadgeWidth = 66;
-constexpr int32_t kButtonInset = 34;
-constexpr int32_t kButtonHeight = 30;
-constexpr int32_t kDragSlop = 10;
+constexpr int32_t kColumns = 4;
+constexpr int32_t kGridTop = 52;
+constexpr int32_t kGridBottom = 214;
+constexpr int32_t kCellHeight = 78;
+constexpr int32_t kSheetTop = 118;
+constexpr int32_t kSwipe = 36;        // a swipe needs this many px
+constexpr int32_t kTapSlop = 8;
 
-// Dark palette in the spirit of iOS system colours.
-constexpr Color kBackground = Color::Rgb(4U, 4U, 6U);  // outside the corner curve
-constexpr Color kPage = Color::Rgb(16U, 16U, 20U);
-constexpr Color kCard = Color::Rgb(30U, 30U, 36U);
-constexpr Color kCardSelected = Color::Rgb(42U, 44U, 54U);
-constexpr Color kPill = Color::Rgb(38U, 38U, 44U);
+constexpr Color kBackground = Color::Rgb(0U, 0U, 0U);  // outside the corner curve
+constexpr Color kPage = Color::Rgb(12U, 12U, 15U);
+constexpr Color kCell = Color::Rgb(24U, 24U, 29U);
+constexpr Color kSheet = Color::Rgb(28U, 28U, 33U);
+constexpr Color kPill = Color::Rgb(30U, 30U, 35U);
 constexpr Color kText = Color::Rgb(245U, 245U, 247U);
 constexpr Color kSecondary = Color::Rgb(142U, 142U, 147U);
+constexpr Color kFaint = Color::Rgb(80U, 80U, 86U);
+constexpr Color kButton = Color::Rgb(44U, 44U, 50U);
 constexpr Color kAccent = Color::Rgb(10U, 132U, 255U);
-constexpr Color kWorking = Color::Rgb(10U, 132U, 255U);
-constexpr Color kNeeds = Color::Rgb(255U, 159U, 10U);
-constexpr Color kDone = Color::Rgb(48U, 209U, 88U);
+constexpr Color kAlert = Color::Rgb(255U, 55U, 95U);
+// Character colours: working yellow, needs you green, done blue.
+constexpr Color kWorking = Color::Rgb(255U, 204U, 0U);
+constexpr Color kNeeds = Color::Rgb(48U, 209U, 88U);
+constexpr Color kDone = Color::Rgb(10U, 132U, 255U);
 constexpr Color kClosed = Color::Rgb(99U, 99U, 102U);
 
 enum class State : uint8_t { kWorking, kNeeds, kDone, kReady, kClosed };
@@ -213,77 +215,109 @@ class AgentBuddyApp final {
 
    private:
     // ---- UI ----
-    //
-    // The glass has 60 px rounded corners: the page is a 60 px rounded card
-    // on near-black, titles start 26 px in, the status pill sits top centre
-    // and the buttons sit bottom centre, all clear of the curve.
+
+    enum class Page : uint8_t { kGrid, kSheet, kStats };
 
     void BuildUi() {
         width_ = static_cast<int32_t>(info_.width());
         height_ = static_cast<int32_t>(info_.height());
         (void)scene_.CreateRoundedRect({0, 0, width_, height_}, Style(kPage, kCornerRadius)).value();
 
-        // Status pill, top centre.
-        pill_rect_ = {width_ / 2 - kPillWidth / 2, 7, kPillWidth, 20};
-        (void)scene_.CreateRoundedRect(pill_rect_, Style(kPill, 10U)).value();
-        pill_dot_ = scene_.CreateRoundedRect({pill_rect_.x + 9, pill_rect_.y + 7, 6, 6}, Style(kNeeds, 3U)).value();
-        pill_label_ = scene_
-                          .CreateLabel({pill_rect_.center_x() + 5, pill_rect_.y + 5}, " ", kSecondary, SystemFont::kSmall,
-                                       true)
+        // Status pill, top centre: the Mac link.
+        pill_rect_ = {width_ / 2 - 46, 6, 92, 18};
+        (void)scene_.CreateRoundedRect(pill_rect_, Style(kPill, 9U)).value();
+        pill_dot_ = scene_.CreateRoundedRect({pill_rect_.x + 8, pill_rect_.y + 6, 6, 6}, Style(kFaint, 3U)).value();
+        pill_label_ = scene_.CreateLabel({pill_rect_.center_x() + 5, pill_rect_.y + 2}, " ", kSecondary,
+                                         SystemFont::kSmall, true)
                           .value();
 
-        // Large title, 26 px from the edge, with the Gotchi's address on the right.
-        (void)scene_.CreateLabel({kTitleInset, 34}, "Sessions", kText, SystemFont::kTitle).value();
-        address_ = scene_.CreateLabel({width_ - kTitleInset - 70, 40}, " ", kSecondary, SystemFont::kSmall).value();
-
-        // Session cards.
-        for (uint32_t index = 0U; index < kVisibleRows; ++index) {
-            Card& card = cards_[index];
-            card.rect = {kSideMargin, kListTop + static_cast<int32_t>(index) * kCardPitch, width_ - kSideMargin * 2,
-                         kCardHeight};
-            card.box = scene_.CreateRoundedRect(card.rect, Style(kCard, 12U)).value();
-            card.dot = scene_.CreateRoundedRect({card.rect.x + 11, card.rect.y + 16, 8, 8}, Style(kClosed, 4U)).value();
-            card.name = scene_.CreateLabel({card.rect.x + 27, card.rect.y + 6}, " ", kText, SystemFont::kLarge).value();
-            card.info =
-                scene_.CreateLabel({card.rect.x + 27, card.rect.y + 24}, " ", kSecondary, SystemFont::kSmall).value();
-            const Rect badge{card.rect.x + card.rect.width - kBadgeWidth - 8, card.rect.y + 11, kBadgeWidth, 18};
-            card.badge = scene_.CreateRoundedRect(badge, Style(kCard, 9U)).value();
-            card.state = scene_
-                             .CreateLabel({badge.center_x(), badge.y + 4}, " ", kText, SystemFont::kSmall, true)
-                             .value();
+        // Small title on the left, coloured counts on the right.
+        title_ = scene_.CreateLabel({kTitleInset, 28}, "Agents", kText, SystemFont::kMedium).value();
+        const Color colors[3] = {kWorking, kNeeds, kDone};
+        for (int32_t index = 0; index < 3; ++index) {
+            const int32_t x = width_ - kTitleInset - 96 + index * 34;
+            (void)scene_.CreateRoundedRect({x, 34, 8, 8}, Style(colors[index], 4U)).value();
+            counts_[index] = scene_.CreateLabel({x + 11, 30}, "0", kText, SystemFont::kSmall).value();
         }
 
-        // Thin scroll bar to the right of the cards.
-        const int32_t list_height = kCardPitch * static_cast<int32_t>(kVisibleRows) - (kCardPitch - kCardHeight);
-        track_rect_ = {width_ - kSideMargin + 3, kListTop + 4, 3, list_height - 8};
-        track_ = scene_.CreateRoundedRect(track_rect_, Style(kPill, 1U)).value();
-        thumb_ = scene_.CreateRoundedRect(track_rect_, Style(kClosed, 1U)).value();
+        // Character grid, clipped to its band and scrolled by translation.
+        grid_rect_ = {kSideMargin, kGridTop, width_ - kSideMargin * 2, kGridBottom - kGridTop};
+        micropixel::ContainerProperties clip{};
+        clip.clip = grid_rect_;
+        grid_ = scene_.CreateContainer(clip).value();
+        const int32_t cell_width = grid_rect_.width / kColumns;
+        for (uint32_t index = 0U; index < kMaxSessions; ++index) {
+            Cell& cell = cells_[index];
+            const int32_t column = static_cast<int32_t>(index) % kColumns;
+            const int32_t row = static_cast<int32_t>(index) / kColumns;
+            cell.rect = {grid_rect_.x + column * cell_width + 2, grid_rect_.y + row * kCellHeight + 2, cell_width - 4,
+                         kCellHeight - 6};
+            const int32_t cx = cell.rect.center_x();
+            const int32_t top = cell.rect.y + 8;
+            cell.ring = grid_.CreateRoundedRect(cell.rect, Style(kCell, 16U)).value();
+            cell.body = grid_.CreateRoundedRect({cx - 19, top, 38, 36}, Style(kClosed, 14U)).value();
+            cell.eye_left = grid_.CreateRoundedRect({cx - 11, top + 10, 9, 11}, Style(kText, 4U)).value();
+            cell.eye_right = grid_.CreateRoundedRect({cx + 2, top + 10, 9, 11}, Style(kText, 4U)).value();
+            cell.pupil_left = grid_.CreateRoundedRect({cx - 8, top + 14, 4, 5}, Style(kBackground, 2U)).value();
+            cell.pupil_right = grid_.CreateRoundedRect({cx + 5, top + 14, 4, 5}, Style(kBackground, 2U)).value();
+            cell.badge = grid_.CreateRoundedRect({cx + 12, top - 4, 12, 12}, Style(kAlert, 6U)).value();
+            cell.name = grid_.CreateLabel({cx, top + 42}, " ", kSecondary, SystemFont::kSmall, true).value();
+        }
+        empty_title_ = scene_.CreateLabel({width_ / 2, 100}, " ", kText, SystemFont::kMedium, true).value();
+        empty_hint_ = scene_.CreateLabel({width_ / 2, 124}, " ", kSecondary, SystemFont::kSmall, true).value();
+        hint_ = scene_.CreateLabel({width_ / 2, 220}, "Swipe up for controls", kFaint, SystemFont::kSmall, true)
+                    .value();
 
-        // Empty state, in the middle of the list area.
-        empty_title_ = scene_
-                           .CreateLabel({width_ / 2, kListTop + 36}, "No sessions yet", kText, SystemFont::kLarge, true)
-                           .value();
-        empty_hint_ = scene_
-                          .CreateLabel({width_ / 2, kListTop + 58}, " ", kSecondary, SystemFont::kSmall, true)
+        // Controls sheet: slides up from the bottom, shaped like the glass.
+        micropixel::ContainerProperties sheet{};
+        sheet.clip = {0, kSheetTop, width_, height_ - kSheetTop};
+        sheet.visible = false;
+        sheet_ = scene_.CreateContainer(sheet).value();
+        (void)sheet_.CreateRoundedRect({0, kSheetTop - 40, width_, height_ - kSheetTop + 40},
+                                       Style(kSheet, kCornerRadius))
+            .value();
+        (void)sheet_.CreateRoundedRect({width_ / 2 - 18, kSheetTop + 6, 36, 4}, Style(kFaint, 2U)).value();
+        sheet_dot_ = sheet_.CreateRoundedRect({kTitleInset, kSheetTop + 22, 10, 10}, Style(kClosed, 5U)).value();
+        sheet_name_ = sheet_.CreateLabel({kTitleInset + 16, kSheetTop + 16}, " ", kText, SystemFont::kMedium).value();
+        sheet_info_ = sheet_.CreateLabel({kTitleInset + 16, kSheetTop + 36}, " ", kSecondary, SystemFont::kSmall)
+                          .value();
+        const int32_t inner = 30;
+        const int32_t gap = 10;
+        const int32_t button_width = (width_ - inner * 2 - gap) / 2;
+        talk_rect_ = {inner, kSheetTop + 60, button_width, 32};
+        send_rect_ = {inner + button_width + gap, kSheetTop + 60, button_width, 32};
+        talk_box_ = sheet_.CreateRoundedRect(talk_rect_, Style(kAccent, 16U)).value();
+        (void)sheet_.CreateRoundedRect(send_rect_, Style(kButton, 16U)).value();
+        talk_label_ = sheet_.CreateLabel({talk_rect_.center_x(), talk_rect_.y + 7}, "Hold to Talk", kText,
+                                         SystemFont::kMedium, true)
+                          .value();
+        send_label_ = sheet_.CreateLabel({send_rect_.center_x(), send_rect_.y + 7}, "Send", kText,
+                                         SystemFont::kMedium, true)
                           .value();
 
-        // Buttons, bottom centre, clear of the corner curve.
-        const int32_t button_top = height_ - kButtonHeight - 9;
-        const int32_t button_width = (width_ - kButtonInset * 2 - 8) / 2;
-        talk_rect_ = {kButtonInset, button_top, button_width, kButtonHeight};
-        send_rect_ = {kButtonInset + button_width + 8, button_top, button_width, kButtonHeight};
-        talk_box_ = scene_.CreateRoundedRect(talk_rect_, Style(kAccent, kButtonHeight / 2U)).value();
-        (void)scene_.CreateRoundedRect(send_rect_, Style(kCard, kButtonHeight / 2U)).value();
-        talk_label_ = scene_
-                          .CreateLabel({talk_rect_.center_x(), talk_rect_.y + 8}, "Hold to talk", Color::White(),
-                                       SystemFont::kMedium, true)
-                          .value();
-        (void)scene_
-            .CreateLabel({send_rect_.center_x(), send_rect_.y + 8}, "Send", kAccent, SystemFont::kMedium, true)
+        // Stats page: swipe right from the grid.
+        micropixel::ContainerProperties stats{};
+        stats.visible = false;
+        stats_ = scene_.CreateContainer(stats).value();
+        (void)stats_.CreateRoundedRect({0, 0, width_, height_}, Style(kPage, kCornerRadius)).value();
+        (void)stats_.CreateLabel({kTitleInset, 28}, "Overview", kText, SystemFont::kMedium).value();
+        const char* names[4] = {"Working", "Need you", "Done", "Closed"};
+        const Color tones[4] = {kWorking, kNeeds, kDone, kClosed};
+        const int32_t tile_width = (width_ - 40 * 2 - 10) / 2;
+        for (int32_t index = 0; index < 4; ++index) {
+            const Rect tile{40 + (index % 2) * (tile_width + 10), 56 + (index / 2) * 64, tile_width, 56};
+            (void)stats_.CreateRoundedRect(tile, Style(kCell, 16U)).value();
+            (void)stats_.CreateRoundedRect({tile.x + 12, tile.y + 12, 8, 8}, Style(tones[index], 4U)).value();
+            (void)stats_.CreateLabel({tile.x + 26, tile.y + 7}, names[index], kSecondary, SystemFont::kSmall).value();
+            stat_values_[index] =
+                stats_.CreateLabel({tile.x + 12, tile.y + 24}, "0", tones[index], SystemFont::kLarge).value();
+        }
+        stats_link_ = stats_.CreateLabel({width_ / 2, 184}, " ", kSecondary, SystemFont::kSmall, true).value();
+        stats_ble_ = stats_.CreateLabel({width_ / 2, 199}, " ", kSecondary, SystemFont::kSmall, true).value();
+        (void)stats_.CreateLabel({width_ / 2, 216}, "Swipe left to go back", kFaint, SystemFont::kSmall, true)
             .value();
     }
 
-    // Cuts `text` with ".." so it fits `max_width` pixels in `font`.
     void Fit(const char* text, SystemFont font, int32_t max_width, char* out, uint32_t capacity) const {
         CopyField(out, capacity, NonEmpty(text));
         uint32_t length = static_cast<uint32_t>(strlen(out));
@@ -305,175 +339,243 @@ class AgentBuddyApp final {
         }
     }
 
+    int32_t MaxScroll() const {
+        const int32_t rows = (static_cast<int32_t>(count_) + kColumns - 1) / kColumns;
+        const int32_t content = rows * kCellHeight;
+        return content > grid_rect_.height ? content - grid_rect_.height : 0;
+    }
+
+    void ApplyScroll() {
+        const int32_t limit = MaxScroll();
+        scroll_ = scroll_ < 0 ? 0 : (scroll_ > limit ? limit : scroll_);
+        grid_.SetTranslation({0, -scroll_});
+    }
+
+    void RevealSelected() {
+        const int32_t top = static_cast<int32_t>(selected_) / kColumns * kCellHeight;
+        if (top < scroll_) {
+            scroll_ = top;
+        } else if (top + kCellHeight > scroll_ + grid_rect_.height) {
+            scroll_ = top + kCellHeight - grid_rect_.height;
+        }
+    }
+
+    void ShowPage(Page page) {
+        page_ = page;
+        sheet_.SetVisible(page == Page::kSheet);
+        stats_.SetVisible(page == Page::kStats);
+        Refresh();
+    }
+
     void Refresh() {
         const auto keyboard = keyboard_.State();
         ble_connected_ = keyboard && keyboard->available && keyboard->connected;
+        ++tick_;
 
         char text[48];
         const auto net = network_.State();
+        Color dot = kFaint;
+        char address[24] = "";
+        if (net && net->station_connected) {
+            FormatAddress(net->station_address, address);
+        }
         if (!net || !net->available) {
             CopyField(text, sizeof(text), "No Wi-Fi");
+            dot = kAlert;
         } else if (!net->station_connected) {
-            CopyField(text, sizeof(text), net->station_connecting ? "Joining Wi-Fi" : "Join Wi-Fi");
+            CopyField(text, sizeof(text), net->station_connecting ? "Wi-Fi..." : "Join Wi-Fi");
+            dot = kWorking;
+        } else if (client_ != 0U) {
+            CopyField(text, sizeof(text), "Mac linked");
+            dot = kNeeds;
         } else {
-            char address[24];
-            FormatAddress(net->station_address, address);
-            CopyField(text, sizeof(text), address);
-        }
-        address_.SetText(text);
-        if (const auto measured = app_.renderer().MeasureText(text, SystemFont::kSmall)) {
-            address_.SetPosition({width_ - kTitleInset - static_cast<int32_t>(measured->width), 40});
-        }
-
-        uint32_t working = 0U;
-        uint32_t needs = 0U;
-        for (uint32_t index = 0U; index < count_; ++index) {
-            working += sessions_[index].state == State::kWorking ? 1U : 0U;
-            needs += sessions_[index].state == State::kNeeds ? 1U : 0U;
-        }
-        uint32_t length = 0U;
-        text[0] = '\0';
-        if (client_ == 0U) {
-            Append(text, sizeof(text), length, "Mac not connected");
-        } else if (needs != 0U) {
-            AppendNumber(text, sizeof(text), length, needs);
-            Append(text, sizeof(text), length, " need you");
-        } else if (working != 0U) {
-            AppendNumber(text, sizeof(text), length, working);
-            Append(text, sizeof(text), length, " working");
-        } else {
-            Append(text, sizeof(text), length, count_ == 0U ? "Mac connected" : "All done");
+            CopyField(text, sizeof(text), "No Mac");
+            dot = kWorking;
         }
         pill_label_.SetText(text);
-        pill_label_.SetColor(needs != 0U ? kNeeds : kSecondary);
-        pill_dot_.SetFillColor(client_ == 0U ? kClosed : (needs != 0U ? kNeeds : (working != 0U ? kWorking : kDone)));
+        pill_dot_.SetFillColor(dot);
+        pill_dot_.SetStrokeColor(dot);
+        {
+            uint32_t length = 0U;
+            char line[64] = "";
+            Append(line, sizeof(line), length, text);
+            if (address[0] != '\0') {
+                Append(line, sizeof(line), length, "  ");
+                Append(line, sizeof(line), length, address);
+            }
+            stats_link_.SetText(line);
+            stats_ble_.SetText(ble_connected_ ? "Bluetooth keyboard paired" : "Bluetooth: pair \"CGotchi\" on the Mac");
+            stats_ble_.SetColor(ble_connected_ ? kNeeds : kWorking);
+        }
+
+        uint32_t totals[4] = {0U, 0U, 0U, 0U};  // working, needs, done, closed
+        for (uint32_t index = 0U; index < count_; ++index) {
+            switch (sessions_[index].state) {
+                case State::kWorking: ++totals[0]; break;
+                case State::kNeeds: ++totals[1]; break;
+                case State::kClosed: ++totals[3]; break;
+                case State::kDone:
+                case State::kReady: ++totals[2]; break;
+            }
+        }
+        for (uint32_t index = 0U; index < 4U; ++index) {
+            uint32_t length = 0U;
+            text[0] = '\0';
+            AppendNumber(text, sizeof(text), length, totals[index]);
+            if (index < 3U) counts_[index].SetText(text);
+            stat_values_[index].SetText(text);
+        }
 
         if (selected_ >= count_) {
             selected_ = count_ == 0U ? 0U : count_ - 1U;
         }
-        if (follow_selection_) {
-            if (selected_ < first_) {
-                first_ = selected_;
-            } else if (selected_ >= first_ + kVisibleRows) {
-                first_ = selected_ - kVisibleRows + 1U;
-            }
-            follow_selection_ = false;
-        }
-        const uint32_t max_first = count_ > kVisibleRows ? count_ - kVisibleRows : 0U;
-        if (first_ > max_first) {
-            first_ = max_first;
-        }
-
-        for (uint32_t index = 0U; index < kVisibleRows; ++index) {
-            Card& card = cards_[index];
-            const uint32_t session_index = first_ + index;
-            const bool shown = session_index < count_;
-            card.box.SetVisible(shown);
-            card.dot.SetVisible(shown);
-            card.name.SetVisible(shown);
-            card.info.SetVisible(shown);
-            card.badge.SetVisible(shown);
-            card.state.SetVisible(shown);
+        const int32_t look = (tick_ % 2U == 0U) ? -1 : 2;  // working eyes glance left and right
+        for (uint32_t index = 0U; index < kMaxSessions; ++index) {
+            Cell& cell = cells_[index];
+            const bool shown = index < count_;
+            cell.ring.SetVisible(shown);
+            cell.body.SetVisible(shown);
+            cell.eye_left.SetVisible(shown);
+            cell.eye_right.SetVisible(shown);
+            cell.pupil_left.SetVisible(shown);
+            cell.pupil_right.SetVisible(shown);
+            cell.name.SetVisible(shown);
             if (!shown) {
+                cell.badge.SetVisible(false);
                 continue;
             }
-            const Session& session = sessions_[session_index];
-            const bool selected = session_index == selected_;
+            const Session& session = sessions_[index];
             const Color color = StateColor(session.state);
-            card.box.SetFillColor(selected ? kCardSelected : kCard);
-            card.box.SetStrokeColor(selected ? kAccent : kCard);
-            card.box.SetStrokeWidth(selected ? 2U : 0U);
-            card.dot.SetFillColor(color);
-            card.dot.SetStrokeColor(color);
-            char fitted[kNameMax + 4U];
-            Fit(session.name, SystemFont::kLarge, card.rect.width - 27 - kBadgeWidth - 14, fitted, sizeof(fitted));
-            card.name.SetText(fitted);
-            Fit(session.info, SystemFont::kSmall, card.rect.width - 27 - kBadgeWidth - 14, fitted, sizeof(fitted));
-            card.info.SetText(fitted);
-            const Color tint = Color::Mix(color, selected ? kCardSelected : kCard, 60U);
-            card.badge.SetFillColor(tint);
-            card.badge.SetStrokeColor(tint);
-            card.state.SetText(StateText(session.state));
-            card.state.SetColor(color);
+            const bool selected = index == selected_;
+            cell.ring.SetFillColor(selected ? Color::Mix(color, kCell, 40U) : kCell);
+            cell.ring.SetStrokeColor(selected ? kText : kCell);
+            cell.ring.SetStrokeWidth(selected ? 2U : 0U);
+            cell.body.SetFillColor(color);
+            cell.body.SetStrokeColor(color);
+            const int32_t cx = cell.rect.center_x();
+            const int32_t top = cell.rect.y + 8;
+            const bool sleepy = session.state == State::kDone || session.state == State::kReady ||
+                                session.state == State::kClosed;
+            const int32_t eye_height = sleepy ? 4 : 11;
+            const int32_t eye_y = top + (sleepy ? 16 : 10);
+            cell.eye_left.SetRect({cx - 11, eye_y, 9, eye_height});
+            cell.eye_right.SetRect({cx + 2, eye_y, 9, eye_height});
+            const int32_t offset = session.state == State::kWorking ? look : 0;
+            cell.pupil_left.SetVisible(!sleepy);
+            cell.pupil_right.SetVisible(!sleepy);
+            cell.pupil_left.SetRect({cx - 9 + 1 + offset, top + 14, 4, 5});
+            cell.pupil_right.SetRect({cx + 4 + offset, top + 14, 4, 5});
+            cell.badge.SetVisible(session.state == State::kNeeds && tick_ % 2U == 0U);
+            char name[kNameMax + 1U];
+            Fit(session.name, SystemFont::kSmall, cell.rect.width - 4, name, sizeof(name));
+            cell.name.SetText(name);
+            cell.name.SetColor(selected ? kText : kSecondary);
         }
+        ApplyScroll();
 
-        const bool scrollable = count_ > kVisibleRows;
-        track_.SetVisible(scrollable);
-        thumb_.SetVisible(scrollable);
-        if (scrollable) {
-            const int32_t thumb_height = track_rect_.height * static_cast<int32_t>(kVisibleRows) /
-                                         static_cast<int32_t>(count_);
-            const int32_t travel = track_rect_.height - thumb_height;
-            const int32_t offset = travel * static_cast<int32_t>(first_) / static_cast<int32_t>(max_first);
-            thumb_.SetRect({track_rect_.x, track_rect_.y + offset, track_rect_.width, thumb_height});
+        const bool empty = count_ == 0U;
+        empty_title_.SetVisible(empty && page_ == Page::kGrid);
+        empty_hint_.SetVisible(empty && page_ == Page::kGrid);
+        empty_title_.SetText(client_ == 0U ? "Not connected" : "No sessions");
+        empty_hint_.SetText(client_ == 0U ? "Start agent_bridge.py on your Mac" : "Start Claude Code to see it here");
+        hint_.SetVisible(page_ == Page::kGrid);
+
+        if (count_ != 0U) {
+            char title[kNameMax + 1U];
+            Fit(sessions_[selected_].name, SystemFont::kMedium, width_ - kTitleInset - 130, title, sizeof(title));
+            title_.SetText(title);
+        } else {
+            title_.SetText("Agents");
         }
-
-        const bool empty = client_ == 0U || count_ == 0U;
-        empty_title_.SetVisible(empty);
-        empty_hint_.SetVisible(empty);
-        empty_title_.SetText(client_ == 0U ? "Waiting for your Mac" : "No sessions yet");
-        empty_hint_.SetText(client_ == 0U ? "Start agent_bridge.py on the Mac" : "Start claude on your Mac");
-
-        talk_box_.SetFillColor(talking_ ? kNeeds : (ble_connected_ ? kAccent : kClosed));
-        talk_label_.SetText(talking_ ? "Listening..." : (ble_connected_ ? "Hold to talk" : "Pair CGotchi"));
+        if (count_ != 0U) {
+            const Session& session = sessions_[selected_];
+            char name[kNameMax + 1U];
+            Fit(session.name, SystemFont::kMedium, width_ - kTitleInset * 2 - 16, name, sizeof(name));
+            sheet_name_.SetText(name);
+            char line[kInfoMax + 24U];
+            uint32_t length = 0U;
+            line[0] = '\0';
+            Append(line, sizeof(line), length, StateText(session.state));
+            Append(line, sizeof(line), length, "  \xC2\xB7  ");
+            Append(line, sizeof(line), length, NonEmpty(session.info));
+            char info[kInfoMax + 24U];
+            Fit(line, SystemFont::kSmall, width_ - kTitleInset * 2 - 16, info, sizeof(info));
+            sheet_info_.SetText(info);
+            sheet_dot_.SetFillColor(StateColor(session.state));
+            sheet_dot_.SetStrokeColor(StateColor(session.state));
+        } else {
+            sheet_name_.SetText("No session");
+            sheet_info_.SetText(" ");
+        }
+        const Color talk = talking_ ? kAlert : (ble_connected_ ? kAccent : kButton);
+        talk_box_.SetFillColor(talk);
+        talk_box_.SetStrokeColor(talk);
+        talk_label_.SetText(talking_ ? "Listening..." : (ble_connected_ ? "Hold to Talk" : "Pair CGotchi"));
+        send_label_.SetColor(ble_connected_ ? kText : kSecondary);
         (void)app_.renderer().Present(scene_);
     }
 
     // ---- Input ----
-    //
-    // Swipe the list up or down to scroll, tap a card to pick it. VOL+ picks
-    // the next session, VOL- sends Enter, BOOT is push to talk.
 
+    // Grid: drag scrolls, tap picks, swipe up opens controls (when the grid
+    // cannot scroll further), swipe right opens the overview.
     void HandleTouch(const micropixel::TouchEvent& touch) {
-        const auto point = touch.position();
-        switch (touch.phase()) {
-            case micropixel::TouchPhase::kDown:
+        const auto phase = touch.phase();
+        // The finger-up event may not carry a position; use the last one seen.
+        const auto point = phase == micropixel::TouchPhase::kUp ? last_point_ : touch.position();
+        last_point_ = point;
+        if (phase == micropixel::TouchPhase::kDown) {
+            touch_start_ = point;
+            touch_scroll_ = scroll_;
+            moved_ = false;
+            if (page_ == Page::kSheet) {
                 if (talk_rect_.contains(point)) {
                     BeginTalk();
                 } else if (send_rect_.contains(point)) {
                     SendEnter();
-                } else if (point.y >= kListTop - 6 && point.y < talk_rect_.y - 4) {
-                    in_list_ = true;
-                    dragged_ = false;
-                    touch_start_y_ = point.y;
-                    drag_first_ = first_;
                 }
-                break;
-            case micropixel::TouchPhase::kMove:
-                if (in_list_) {
-                    const int32_t dy = point.y - touch_start_y_;
-                    if (dy > kDragSlop || dy < -kDragSlop) {
-                        dragged_ = true;
-                    }
-                    if (dragged_) {
-                        // Finger up moves the list up, like on a phone.
-                        const int32_t rows = -dy / kCardPitch;
-                        int32_t first = static_cast<int32_t>(drag_first_) + rows;
-                        const int32_t max_first = count_ > kVisibleRows ? static_cast<int32_t>(count_ - kVisibleRows) : 0;
-                        first = first < 0 ? 0 : (first > max_first ? max_first : first);
-                        if (static_cast<uint32_t>(first) != first_) {
-                            first_ = static_cast<uint32_t>(first);
-                            Refresh();
-                        }
-                    }
+            }
+            return;
+        }
+        const int32_t dx = point.x - touch_start_.x;
+        const int32_t dy = point.y - touch_start_.y;
+        if (dx > kTapSlop || dx < -kTapSlop || dy > kTapSlop || dy < -kTapSlop) {
+            moved_ = true;
+        }
+        if (phase == micropixel::TouchPhase::kMove) {
+            if (page_ == Page::kGrid && moved_ && MaxScroll() > 0 && (dy > dx || dy > -dx) == (dy > 0)) {
+                scroll_ = touch_scroll_ - dy;
+                ApplyScroll();
+                (void)app_.renderer().Present(scene_);
+            }
+            return;
+        }
+        EndTalk();
+        if (phase != micropixel::TouchPhase::kUp) {
+            return;
+        }
+        const bool horizontal = (dx > 0 ? dx : -dx) > (dy > 0 ? dy : -dy);
+        if (page_ == Page::kStats) {
+            if (horizontal && dx < -kSwipe) ShowPage(Page::kGrid);
+            return;
+        }
+        if (page_ == Page::kSheet) {
+            if (!horizontal && dy > kSwipe) ShowPage(Page::kGrid);
+            else if (!moved_ && point.y < kSheetTop) ShowPage(Page::kGrid);
+            return;
+        }
+        if (horizontal && dx > kSwipe) {
+            ShowPage(Page::kStats);
+        } else if (!horizontal && dy < -kSwipe && touch_scroll_ >= MaxScroll()) {
+            ShowPage(Page::kSheet);
+        } else if (!moved_) {
+            const micropixel::Point local{point.x, point.y + scroll_};
+            for (uint32_t index = 0U; index < count_; ++index) {
+                if (cells_[index].rect.contains(local) && grid_rect_.contains(point)) {
+                    Select(index);
+                    break;
                 }
-                break;
-            case micropixel::TouchPhase::kUp:
-                if (in_list_ && !dragged_) {
-                    for (uint32_t index = 0U; index < kVisibleRows; ++index) {
-                        if (first_ + index < count_ && cards_[index].rect.contains(point)) {
-                            Select(first_ + index, false);
-                            break;
-                        }
-                    }
-                }
-                in_list_ = false;
-                EndTalk();
-                break;
-            case micropixel::TouchPhase::kCancel:
-                in_list_ = false;
-                EndTalk();
-                break;
+            }
         }
     }
 
@@ -482,7 +584,7 @@ class AgentBuddyApp final {
         const bool repeat = key.phase() == micropixel::KeyPhase::kRepeat;
         if (key.code() == micropixel::KeyCode::kRight && (down || repeat)) {
             if (count_ != 0U) {
-                Select(selected_ + 1U < count_ ? selected_ + 1U : 0U, true);
+                Select(selected_ + 1U < count_ ? selected_ + 1U : 0U);
             }
         } else if (key.code() == micropixel::KeyCode::kLeft && down) {
             SendEnter();
@@ -493,12 +595,12 @@ class AgentBuddyApp final {
         }
     }
 
-    void Select(uint32_t index, bool follow) {
+    void Select(uint32_t index) {
         if (index >= count_) {
             return;
         }
         selected_ = index;
-        follow_selection_ = follow;
+        RevealSelected();
         Sound(agent_buddy_sfx::kPress);
         char line[kIdMax + 4U];
         uint32_t length = 0U;
@@ -707,14 +809,16 @@ class AgentBuddyApp final {
         return nullptr;
     }
 
-    struct Card final {
+    struct Cell final {
         Rect rect{};
-        micropixel::RoundedRectNode box;
-        micropixel::RoundedRectNode dot;
-        micropixel::LabelNode name;
-        micropixel::LabelNode info;
+        micropixel::RoundedRectNode ring;
+        micropixel::RoundedRectNode body;
+        micropixel::RoundedRectNode eye_left;
+        micropixel::RoundedRectNode eye_right;
+        micropixel::RoundedRectNode pupil_left;
+        micropixel::RoundedRectNode pupil_right;
         micropixel::RoundedRectNode badge;
-        micropixel::LabelNode state;
+        micropixel::LabelNode name;
     };
 
     micropixel::Application& app_;
@@ -727,32 +831,42 @@ class AgentBuddyApp final {
     Rect pill_rect_{};
     micropixel::RoundedRectNode pill_dot_;
     micropixel::LabelNode pill_label_;
-    micropixel::LabelNode address_;
-    std::array<Card, kVisibleRows> cards_{};
-    Rect track_rect_{};
-    micropixel::RoundedRectNode track_;
-    micropixel::RoundedRectNode thumb_;
+    micropixel::LabelNode title_;
+    std::array<micropixel::LabelNode, 3> counts_{};
+    Rect grid_rect_{};
+    micropixel::ContainerNode grid_;
+    std::array<Cell, kMaxSessions> cells_{};
     micropixel::LabelNode empty_title_;
     micropixel::LabelNode empty_hint_;
+    micropixel::LabelNode hint_;
+    micropixel::ContainerNode sheet_;
+    micropixel::RoundedRectNode sheet_dot_;
+    micropixel::LabelNode sheet_name_;
+    micropixel::LabelNode sheet_info_;
     micropixel::RoundedRectNode talk_box_;
     micropixel::LabelNode talk_label_;
+    micropixel::LabelNode send_label_;
     Rect talk_rect_{};
     Rect send_rect_{};
+    micropixel::ContainerNode stats_;
+    std::array<micropixel::LabelNode, 4> stat_values_{};
+    micropixel::LabelNode stats_link_;
+    micropixel::LabelNode stats_ble_;
     int32_t width_{};
     int32_t height_{};
-
-    bool in_list_{};
-    bool dragged_{};
-    int32_t touch_start_y_{};
-    uint32_t drag_first_{};
-    bool follow_selection_{};
+    Page page_{Page::kGrid};
+    int32_t scroll_{};
+    micropixel::Point touch_start_{};
+    micropixel::Point last_point_{};
+    int32_t touch_scroll_{};
+    bool moved_{};
+    uint32_t tick_{};
 
     std::array<Session, kMaxSessions> sessions_{};
     std::array<Session, kMaxSessions> pending_{};
     uint32_t count_{};
     uint32_t pending_count_{};
     uint32_t selected_{};
-    uint32_t first_{};
     bool synced_{};
 
     uint32_t listener_{};

@@ -8,13 +8,23 @@ the next command by voice.
 - **Done** (green, chime): finished, waiting for your next command.
 - **Closed** (grey): the session ended (cleared after 10 minutes).
 
-## Controls
+## Screens
+
+- **Grid** (home): one character per session, 4 per row. Yellow = working,
+  green = needs you (red badge blinks), blue = done, grey = closed. Top right
+  shows the counts with the same coloured dots; the selected session's name
+  is the title. Tap a character to pick it (its terminal comes to the front
+  on the Mac). Drag up or down to scroll when there are more than 8.
+- **Controls** (swipe up): the selected session with Hold to Talk and Send.
+  Swipe down or tap above the sheet to close.
+- **Overview** (swipe right): counts per state, Mac, Wi-Fi and Bluetooth
+  status. Swipe left to go back.
 
 | Action | Touch | Keys |
 | --- | --- | --- |
-| Pick a session (its terminal comes to the front on the Mac) | tap its row | VOL+ (next) |
-| Speak the next command (Wispr Flow, Ctrl+Option) | hold **HOLD TO TALK** | hold BOOT |
-| Send it (Enter) | tap **SEND** | VOL- |
+| Pick the next session | tap a character | VOL+ |
+| Speak the next command (Wispr Flow, Ctrl+Option) | hold **Hold to Talk** | hold BOOT |
+| Send it (Enter) | tap **Send** | VOL- |
 
 ## Setup (once)
 
