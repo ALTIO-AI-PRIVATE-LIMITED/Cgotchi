@@ -40,6 +40,7 @@ SCRIPT = Path(__file__).resolve()
 CLOSED_KEEP_S = 10 * 60      # closed sessions stay on the list this long
 FORGET_S = 24 * 60 * 60      # sessions untouched this long are dropped
 SEND_EVERY_S = 2.0
+CLOUD_RECENT_S = 48 * 60 * 60  # cloud sessions idle longer than this are hidden
 HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "Notification", "Stop", "SessionEnd"]
 ORDER = {"needs": 0, "working": 1, "done": 2, "ready": 3, "closed": 4}
 
@@ -238,6 +239,8 @@ def cloud_sessions() -> list[dict]:
             return _cloud[1]
         for item in data:
             if item.get("status") == "archived" or not str(item.get("id", "")).startswith("cse_"):
+                continue
+            if now - _when(item.get("last_event_at") or item.get("updated_at")) > CLOUD_RECENT_S:
                 continue
             bucket = str(item.get("status_bucket") or "")
             worker = str(item.get("worker_status") or "")
