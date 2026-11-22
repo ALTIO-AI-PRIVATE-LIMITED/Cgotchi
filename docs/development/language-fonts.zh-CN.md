@@ -71,7 +71,7 @@ python tools/fonts/build_language_fonts.py \
 输入字体来自 [Noto](https://github.com/notofonts/noto-cjk)。字体产物保留 OFL 授权；
 固件正常构建不下载 tokenizer 或原始大字体。增加翻译必须重新检查字形覆盖。
 
-生成器会在输出目录的各 Locale 子目录生成 `app.json`、资源清单、TTF 和许可证；用 `python3 tools/micropixel publish <目录> --dry-run` 验证，再去掉 `--dry-run` 发布。设备通过 `GET /device/v1/devices/{deviceId}/fonts/locales/{locale}` 查询版本、签名和相对下载地址，并仅通过同一 Control QUIC 连接获取 Bundle。选择其他语言时查询对应组件的可用版本；网络不可用时允许使用已安装版本。组件在商店中默认隐藏，勾选“显示系统字体”后可浏览、下载；安装与更新由设备语言菜单完成，以确保字体和语言共同生效。
+生成器会在输出目录的各 Locale 子目录生成 `app.json`、资源清单、TTF 和许可证；用 `python3 tools/cgotchi publish <目录> --dry-run` 验证，再去掉 `--dry-run` 发布。设备通过 `GET /device/v1/devices/{deviceId}/fonts/locales/{locale}` 查询版本、签名和相对下载地址，并仅通过同一 Control QUIC 连接获取 Bundle。选择其他语言时查询对应组件的可用版本；网络不可用时允许使用已安装版本。组件在商店中默认隐藏，勾选“显示系统字体”后可浏览、下载；安装与更新由设备语言菜单完成，以确保字体和语言共同生效。
 
 ## Guest 字体前置条件
 
@@ -99,7 +99,7 @@ python tools/fonts/build_ui_font_subset.py \
   --source build/fonts/NotoSansSC-VF.ttf \
   --locale zh-CN \
   --output build/language-fonts
-python tools/micropixel package build/language-fonts/zh-CN --output-dir build/app-store
+python tools/cgotchi package build/language-fonts/zh-CN --output-dir build/app-store
 python tools/build_app_store_image.py --app-store-size 0x1800000 --output build/app-store/app-store.bin \
   <其余 App Bundle…> build/app-store/zh-cn.bundle.bin
 ```

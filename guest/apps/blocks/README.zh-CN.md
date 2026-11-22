@@ -25,7 +25,7 @@ blocks/
 构建 App Bundle：
 
 ```sh
-python3 tools/micropixel package guest/apps/blocks --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/blocks --aot-target riscv32-ilp32f
 ```
 
 触控操作覆盖整个 720×720 逻辑屏幕：任意位置点击旋转、水平拖动、慢速下拖软降、快速下划硬降、上划换块；
@@ -60,7 +60,7 @@ Hold/Next 共用 atlas 的原尺寸预览图案（含暗色 Hold），固定使�
 ```sh
 python3 guest/apps/blocks/assets/source/generate_playfield.py
 python3 guest/apps/blocks/assets/source/test_playfield.py
-python3 tools/micropixel package guest/apps/blocks --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/blocks --aot-target riscv32-ilp32f
 ```
 
 生成与素材测试需要 Pillow。生成的源 PNG 随应用维护，资源 pack 和 Bundle 仍只由正式构建产生。
@@ -77,11 +77,11 @@ python3 tools/micropixel package guest/apps/blocks --aot-target riscv32-ilp32f
 可通过统一 CLI 从 USB Serial/JTAG 注入同路径触控并立即抓图：
 
 ```sh
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodem1101 input tap 360 352
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodem1101 input tap 560 230
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodem1101 \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodem1101 input tap 360 352
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodem1101 input tap 560 230
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodem1101 \
   input swipe 520 300 610 300 --duration-ms 120 --steps 3
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodem1101 \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodem1101 \
   input swipe 560 250 560 520 --duration-ms 100 --steps 2 \
   --screenshot build/captures/blocks-playing.jpg
 ```

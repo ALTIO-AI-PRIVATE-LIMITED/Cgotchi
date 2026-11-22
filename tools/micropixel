@@ -28,6 +28,8 @@ from typing import Any, Callable, TextIO
 
 
 VERSION = "0.20.2"
+# tools/cgotchi runs this file with CLI_NAME set, so the CLI introduces itself under the CGotchi name.
+PROGRAM = globals().get("CLI_NAME", "micropixel")
 MINIMUM_FIRMWARE_VERSION = "0.4.0"
 BUNDLE_MAGIC = b"MPXBNDL\0"
 BUNDLE_HEADER_SIZE = 128
@@ -1359,7 +1361,7 @@ def publisher_token() -> str:
             return saved["token"]
     except (OSError, ValueError, KeyError):
         pass
-    raise InputRequired("Developer login required: micropixel auth github")
+    raise InputRequired(f"Developer login required: {PROGRAM} auth github")
 
 
 def store_request(path: str, method: str = "GET", body: object = None, token: str | None = None) -> dict:
@@ -1427,7 +1429,7 @@ def run_developer_auth(args: argparse.Namespace) -> None:
             print(f'Developer signed in: {result["developer"]["login"]}')
             return
         time.sleep(max(3, min(10, int(authorization["interval"]))))
-    raise CliError("Developer authorization expired; run micropixel auth github again")
+    raise CliError(f"Developer authorization expired; run {PROGRAM} auth github again")
 
 
 def validate_publication_aot(data: bytes, flags: int, target: int) -> None:
@@ -2069,7 +2071,7 @@ def run_init(args: argparse.Namespace) -> None:
     print(f"Created {manifest_path}\nApp ID: {app_id}\nVersion: {version}\nSources:")
     for source in sources:
         print(f"  {source}")
-    print(f"\nNext: cd {shlex.quote(str(root))}\n  micropixel build\n  micropixel --transport usb run")
+    print(f"\nNext: cd {shlex.quote(str(root))}\n  {PROGRAM} build\n  {PROGRAM} --transport usb run")
     if not starter:
         print("Review sources in app.json before building; use --source when initializing projects with multiple entry points.")
 
@@ -3365,8 +3367,9 @@ def execute_usb(args: argparse.Namespace, client: UsbControlClient) -> None:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(prog="micropixel", description=__doc__)
-    result.add_argument("--version", action="version", version=f"micropixel {VERSION}")
+    description = "CGotchi app build and device-control CLI." if PROGRAM == "cgotchi" else __doc__
+    result = argparse.ArgumentParser(prog=PROGRAM, description=description)
+    result.add_argument("--version", action="version", version=f"{PROGRAM} {VERSION}")
     result.add_argument("--json", action="store_true", help="One final JSON result for init/build/package/publish/run --no-follow; diagnostics go to stderr")
     result.add_argument(
         "--transport",

@@ -94,7 +94,7 @@ gravity-balls: sim balls=… depth_x10=… gravity_x10=… steps_x100=… droppe
 在仓库根目录、已激活项目工具链的环境中：
 
 ```sh
-python3 tools/micropixel package guest/apps/gravity-balls --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/gravity-balls --aot-target riscv32-ilp32f
 bash tools/tests/test_firmware_host.sh
 ```
 
@@ -104,7 +104,7 @@ bash tools/tests/test_firmware_host.sh
 安装运行使用标准单 App 安装流程；Host 需要包含 `CAP_RASTER_SPRITE_ADDITIVE` 的版本才有光晕与光斑：
 
 ```sh
-python3 tools/micropixel --transport usb run guest/apps/gravity-balls
+python3 tools/cgotchi --transport usb run guest/apps/gravity-balls
 ```
 
 真机验收：平放后球落到远墙（否则翻转 `kDepthAxisSign`）、四向倾斜方向正确、甩动时球撞玻璃与侧壁、

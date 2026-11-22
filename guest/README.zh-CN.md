@@ -55,7 +55,7 @@ SDK 默认使用物理屏幕像素作为逻辑坐标；App 可通过 `ConfigureD
 唯一输入，不需要为每个 App 编写 build 脚本：
 
 ```sh
-python3 tools/micropixel --transport usb run guest/apps/sdk-demo
+python3 tools/cgotchi --transport usb run guest/apps/sdk-demo
 
 # 已安装 CLI 时，在包含 app.json 的项目目录中可直接运行：
 micropixel --transport usb run

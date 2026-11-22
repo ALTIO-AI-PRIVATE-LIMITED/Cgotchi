@@ -38,7 +38,7 @@ python3 guest/apps/tilt/assets/source/generate_hard_levels.py \
 构建正式 Bundle：
 
 ```sh
-python3 tools/micropixel package guest/apps/tilt --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/tilt --aot-target riscv32-ilp32f
 ```
 
 ## 开发约束

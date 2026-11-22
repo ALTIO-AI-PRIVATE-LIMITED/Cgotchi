@@ -8,11 +8,11 @@ board. Use it to determine whether a
 
 ```bash
 # ESP-Mosaico (S31), default cycle of every phase, 240 frames each
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/polygon-benchmark \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/polygon-benchmark \
     --aot-target riscv32-ilp32f --profile performance -- --frames=240
 
 # Stay in one phase, render at half resolution enlarged by the Host
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/polygon-benchmark \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/polygon-benchmark \
     --aot-target riscv32-ilp32f --profile performance -- --phase=quads-1.5x --upscale=2
 ```
 

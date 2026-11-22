@@ -41,10 +41,10 @@ Use the left stick to move; small sideways drift is ignored. Drag on the right t
 camera, and press the fixed bottom-right button to jump.
 
 ```bash
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/tomb-explorer \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/tomb-explorer \
     --aot-target riscv32-ilp32f --profile performance
 # scripted route with stats every 120 frames
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/tomb-explorer \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodemXXXX run guest/apps/tomb-explorer \
     --aot-target riscv32-ilp32f --profile performance -- --benchmark
 ```
 

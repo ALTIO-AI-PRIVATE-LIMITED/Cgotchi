@@ -11,9 +11,9 @@
 准备 WASI SDK 和匹配的 WAMRC 后构建 release Bundle：
 
 ```sh
-python3 tools/micropixel package guest/apps/font-benchmark --profile release --aot-target riscv32-ilp32f
-python3 tools/micropixel --transport usb app install build/apps/font-benchmark/font-benchmark.bundle.bin
-python3 tools/micropixel --transport usb app start micropixel.font-benchmark
+python3 tools/cgotchi package guest/apps/font-benchmark --profile release --aot-target riscv32-ilp32f
+python3 tools/cgotchi --transport usb app install build/apps/font-benchmark/font-benchmark.bundle.bin
+python3 tools/cgotchi --transport usb app start micropixel.font-benchmark
 ```
 
 一次运行依次测试：

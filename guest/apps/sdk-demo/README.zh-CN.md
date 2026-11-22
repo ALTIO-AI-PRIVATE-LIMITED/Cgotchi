@@ -70,7 +70,7 @@ python3 tools/generate_demo_explosion_atlas.py --frames 30 --update-manifest
 ## 构建与烧录
 
 ```sh
-python3 tools/micropixel package guest/apps/sdk-demo --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/sdk-demo --aot-target riscv32-ilp32f
 bash tools/p4.sh flash-apps /dev/cu.usbmodemPORT
 ```
 

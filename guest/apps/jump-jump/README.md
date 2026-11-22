@@ -18,15 +18,15 @@ Activate ESP-IDF 6.1 and the repository's WASI SDK / pinned WAMRC toolchain as
 described in the [flashing guide](../../../docs/development/flashing.zh-CN.md).
 
 ```sh
-python3 tools/micropixel package guest/apps/jump-jump \
+python3 tools/cgotchi package guest/apps/jump-jump \
     --aot-target riscv32-ilp32f --profile release
 
 # Identify the S31 by MAC before selecting DEVICE_PORT; close other serial tools.
-python3 tools/micropixel --transport usb --port "$DEVICE_PORT" \
+python3 tools/cgotchi --transport usb --port "$DEVICE_PORT" \
     run guest/apps/jump-jump --profile release --no-follow
 
 # Optional stage timing, emitted every 120 rendered frames.
-python3 tools/micropixel --transport usb --port "$DEVICE_PORT" \
+python3 tools/cgotchi --transport usb --port "$DEVICE_PORT" \
     app start micropixel.jump-jump -- --perf
 ```
 
