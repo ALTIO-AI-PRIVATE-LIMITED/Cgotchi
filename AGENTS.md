@@ -1,4 +1,77 @@
+# CGotchi agent guide
+
+## Start here: build the user an app
+
+Most people who open this repository with a coding agent want a new app on their CGotchi. Unless the user has
+already asked for something else (firmware, docs, a bug fix), open the conversation with:
+
+> Hi! I can build an app for your CGotchi and install it over USB. **What do you want to build?**
+> A game, a desk pet, a timer, a clock, a little toy: anything that fits on the 296x240 screen.
+> Want ideas or ready-made apps first? Browse the CGotchi App Store at <https://gotchi-apps.vercel.app> and
+> install any app from your browser in one click.
+
+Then follow these steps. Keep questions to the minimum: ask only what changes the app, and pick sensible
+defaults for the rest.
+
+1. **Pin down the idea.** What the app does, how it is controlled, and its name. One or two questions at most.
+2. **Check the setup.** Ask the user to plug in the CGotchi with a USB-C data cable, then run:
+
+   ```sh
+   python3 -m pip install "pyserial>=3.5,<4"
+   python3 tools/cgotchi port list
+   python3 tools/cgotchi --transport usb device status
+   ```
+
+   The app toolchain needs:
+   - **WASI SDK 33**: install it at `~/.local/wasi-sdk` (found automatically) or set `WASI_SDK_PATH`.
+     Releases: <https://github.com/WebAssembly/wasi-sdk/releases>.
+   - **wamrc 2.4.3 with the Xtensa backend**: `bash tools/s3.sh build-wamrc` builds it into
+     `build/tools/wamrc-xtensa/` (found automatically; needs ESP-IDF 6.1 and takes a while the first time),
+     or set `XTENSA_WAMRC` to an existing build.
+
+   Install missing pieces only after the user agrees. ESP-IDF is not needed for apps once wamrc exists.
+3. **Create the project** outside `guest/apps/` unless the user wants it in this repository:
+
+   ```sh
+   python3 tools/cgotchi init <app-dir> --app-id local.<app-name> --title "<App Title>"
+   ```
+
+4. **Write the app** in `<app-dir>/src/main.cpp`. Read [the SDK guide](guest/sdk/README.md) first, check its
+   capability catalog before writing helpers, and copy patterns from the example apps in
+   [`guest/apps`](guest/apps) (for example `snake` for a 2D game with sound, `tilt` for the accelerometer).
+5. **Build, install and run** on the device. The AOT target (`xtensa`) is picked from the connected device:
+
+   ```sh
+   python3 tools/cgotchi --transport usb run <app-dir> --no-follow
+   python3 tools/cgotchi --transport usb logs
+   python3 tools/cgotchi --transport usb screenshot --output screenshot.jpg
+   ```
+
+   Fix compiler errors and crashes from the logs. Look at the screenshot to check the result, then ask the user
+   to try it and iterate on their feedback.
+6. **Finish** by telling the user where the source is, how to rerun it (`python3 tools/cgotchi --transport usb run
+   <app-dir>`), and that they can find more apps at <https://gotchi-apps.vercel.app>.
+
+### What a CGotchi app can use
+
+| Feature | Details |
+|---|---|
+| Screen | 296x240 landscape, full colour |
+| Touch | Touch screen |
+| Keys | BOOT, VOL-, VOL+ (Confirm, Left, Right) |
+| Motion | Accelerometer (tilt, shake) |
+| Sound | Speaker: tones, sound effects, music |
+| Storage | Small private key-value store (16 KiB per app) for saves and high scores |
+| Also | Timers, random numbers, power info |
+| Not available to apps | Network, Bluetooth, microphones, vibration |
+
+Apps run in a WebAssembly sandbox with a single-threaded event loop: no threads, exceptions, RTTI, ESP-IDF or
+direct hardware access. If the idea needs something from the last row, say so before building and offer the
+closest version that works offline.
+
 # Repository instructions
+
+The rest of this file is for changes to the firmware, SDK and tools in this repository.
 
 Applies to the entire repository. Use source code, ABI headers, and executable tests as the authority for behavior.
 

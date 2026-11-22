@@ -7,6 +7,7 @@ This repository holds the CGotchi firmware, the app SDK and example apps.
 
 - Website: <https://cgotchi.com>
 - Buy on Amazon: <https://amzn.in/d/0ewWVwJt>
+- Ready-made apps: the CGotchi App Store, <https://gotchi-apps.vercel.app>
 
 Apps are written in C++23 and compiled to WebAssembly. The firmware runs each app in its own sandbox and gives it
 graphics, touch, keys, audio, storage and the accelerometer, so an app never touches the hardware directly.
@@ -108,7 +109,17 @@ sequenceDiagram
     G->>G: All set, App Hall opens
 ```
 
-## Build an app
+## Build an app with an AI agent
+
+Open this repository in Claude Code, Codex, Cursor or any coding agent and tell it what you want, for example:
+"make a tamagotchi-style pet that gets hungry" or "a reaction game for two players". The agent asks what you want
+to build, writes the app, builds it and installs it on your CGotchi over USB. The instructions it follows are in
+[AGENTS.md](AGENTS.md) (Claude Code reads them through [CLAUDE.md](CLAUDE.md)).
+
+Just want apps? Install ready-made ones from your browser at the CGotchi App Store:
+<https://gotchi-apps.vercel.app>.
+
+## Build an app by hand
 
 App development does not need ESP-IDF. Follow the [quickstart](guest/sdk/QUICKSTART.md) to set up the toolchain,
 then plug in your CGotchi with a USB-C data cable and run from the repository root:
