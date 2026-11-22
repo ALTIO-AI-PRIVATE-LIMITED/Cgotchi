@@ -102,7 +102,7 @@ bash tools/s31.sh build-release  # 发布用：Host + Blocks/Snake/Tilt/Demo + �
 bash tools/s31.sh flash-host /dev/cu.usbmodemXXXX
 bash tools/s31.sh monitor /dev/cu.usbmodemXXXX
 bash tools/s31.sh monitor /dev/cu.usbmodemXXXX --reset  # 从应用启动开始抓日志
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodemXXXX screenshot --output screenshot.jpg
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodemXXXX screenshot --output screenshot.jpg
 bash tools/s31.sh build-null
 bash tools/s31.sh fullclean-mosaico  # 仅在需要重建 S31 配置时使用
 ```
@@ -240,7 +240,7 @@ Host 与 Guest App 是两个独立更新通道。只修改固件时执行上面�
 时使用产品固件的 USB 本地控制通道增量安装，不进入 ROM 下载态，也不重写 Host：
 
 ```sh
-python3 tools/micropixel --transport usb --port /dev/cu.usbmodemXXXX \
+python3 tools/cgotchi --transport usb --port /dev/cu.usbmodemXXXX \
     app install guest/apps/sdk-demo
 ```
 
@@ -289,11 +289,11 @@ bash tools/p4.sh reset-app-store "$P4_PORT"
 不会擦除或重写整个 `app_store`：
 
 ```sh
-python3 tools/micropixel --transport usb --port "$P4_PORT" app list
-python3 tools/micropixel --transport usb --port "$P4_PORT" app install build/apps/sdk-demo/sdk-demo.bundle.bin
-python3 tools/micropixel --transport usb --port "$P4_PORT" app start micropixel.demo
-python3 tools/micropixel --transport usb --port "$P4_PORT" app stop
-python3 tools/micropixel --transport usb --port "$P4_PORT" app uninstall micropixel.demo
+python3 tools/cgotchi --transport usb --port "$P4_PORT" app list
+python3 tools/cgotchi --transport usb --port "$P4_PORT" app install build/apps/sdk-demo/sdk-demo.bundle.bin
+python3 tools/cgotchi --transport usb --port "$P4_PORT" app start micropixel.demo
+python3 tools/cgotchi --transport usb --port "$P4_PORT" app stop
+python3 tools/cgotchi --transport usb --port "$P4_PORT" app uninstall micropixel.demo
 ```
 
 `micropixel --transport usb app install guest/apps/sdk-demo` 会先按正式流程构建和打包，再通过同一协议安装；
@@ -433,8 +433,8 @@ Guest 应用（游戏）Bundle：
 
 ```powershell
 . .\tools\guest-toolchain.ps1
-python tools/micropixel package guest/apps/snake --aot-target xtensa --output-dir build/package/snake
-python tools/micropixel package guest/apps/tilt --aot-target xtensa --output-dir build/package/tilt
+python tools/cgotchi package guest/apps/snake --aot-target xtensa --output-dir build/package/snake
+python tools/cgotchi package guest/apps/tilt --aot-target xtensa --output-dir build/package/tilt
 ```
 
 `-Port` 省略时按 pyserial 枚举端口并用 `esptool` 校验芯片；Windows 端口形如 `COM7`。
@@ -460,7 +460,7 @@ Windows 上可以完整构建 Guest 应用 Bundle，不需要 WSL：
 
 ```powershell
 . .\tools\guest-toolchain.ps1
-python tools/micropixel package guest/apps/snake --aot-target xtensa --output-dir build/package/snake
+python tools/cgotchi package guest/apps/snake --aot-target xtensa --output-dir build/package/snake
 ```
 
 `tools/guest-toolchain.ps1` 从仓库根 `.env` 读取三个变量（当前 shell 已有的同名变量优先），

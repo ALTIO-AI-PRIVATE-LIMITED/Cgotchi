@@ -26,7 +26,7 @@ snake/
 构建输出统一写入 `build/apps/snake/`：
 
 ```sh
-python3 tools/micropixel package guest/apps/snake --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/snake --aot-target riscv32-ilp32f
 ```
 
 `gamekit/` 仍是 Snake 内部实现；只有第二个游戏出现相同需求且语义稳定后，才移动到公共 SDK。
@@ -68,8 +68,8 @@ Level、Score、Best、状态文字和 Combo 条按右侧 inset 整组左移，�
 ## 性能基准模式
 
 ```sh
-python3 tools/micropixel --transport usb run guest/apps/snake --aot-target riscv32-ilp32f --no-follow -- --benchmark
-python3 tools/micropixel --transport usb run guest/apps/snake --aot-target riscv32-ilp32f --no-follow -- --benchmark --no-bgm
+python3 tools/cgotchi --transport usb run guest/apps/snake --aot-target riscv32-ilp32f --no-follow -- --benchmark
+python3 tools/cgotchi --transport usb run guest/apps/snake --aot-target riscv32-ilp32f --no-follow -- --benchmark --no-bgm
 ```
 
 `--benchmark` 跳过菜单直接开局、按贪心策略自动转向、撞墙或撞身后立即重开并计 `deaths`，每 120 次 Render 打一行

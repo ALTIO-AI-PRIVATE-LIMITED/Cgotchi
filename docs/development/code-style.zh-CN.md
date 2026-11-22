@@ -248,7 +248,7 @@ GCC 构建同时启用 `-fstack-usage`，在对象文件旁生成 `.su` 报告�
 涉及安装、验签、下载或 OTA 时，在所选板上覆盖成功和失败路径，再运行：
 
 ```sh
-python3 tools/micropixel --transport usb --port "$DEVICE_PORT" device diagnostics
+python3 tools/cgotchi --transport usb --port "$DEVICE_PORT" device diagnostics
 ```
 
 检查 `taskDiagnostics` 中相关任务的 `stackHighWaterMarkBytes`（启动以来最小剩余栈），并记录运行过的路径。

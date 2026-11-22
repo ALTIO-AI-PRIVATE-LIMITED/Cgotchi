@@ -69,9 +69,9 @@ Bundle 的资源包仍只携带 Opus BGM 和启动图标。
 构建、部署与基准：
 
 ```sh
-python3 tools/micropixel package guest/apps/maze-evil --aot-target riscv32-ilp32f
-python3 tools/micropixel --transport usb run guest/apps/maze-evil --no-follow -- --benchmark
-python3 tools/micropixel --transport usb logs -n 40
+python3 tools/cgotchi package guest/apps/maze-evil --aot-target riscv32-ilp32f
+python3 tools/cgotchi --transport usb run guest/apps/maze-evil --no-follow -- --benchmark
+python3 tools/cgotchi --transport usb logs -n 40
 ```
 
 ## 商店资料

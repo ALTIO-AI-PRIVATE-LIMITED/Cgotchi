@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""CGotchi command-line tool: build, install and run apps on a CGotchi.
+
+Same commands and options as the SDK tool next to it, under the CGotchi name.
+"""
+import runpy
+from pathlib import Path
+
+runpy.run_path(str(Path(__file__).resolve().parent / "micropixel"), init_globals={"CLI_NAME": "cgotchi"},
+               run_name="__main__")

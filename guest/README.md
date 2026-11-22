@@ -16,13 +16,13 @@ A single-threaded event loop handles input, timers, and lifecycle events.
 With the SDK toolchain configured and a CGotchi device connected:
 
 ```sh
-python3 tools/micropixel --transport usb run guest/apps/sdk-demo
+python3 tools/cgotchi --transport usb run guest/apps/sdk-demo
 ```
 
 For a release Bundle, choose the architecture explicitly:
 
 ```sh
-python3 tools/micropixel package guest/apps/sdk-demo --aot-target riscv32-ilp32f
+python3 tools/cgotchi package guest/apps/sdk-demo --aot-target riscv32-ilp32f
 ```
 
 P4/S31 use `riscv32-ilp32f`; S3 uses `xtensa`. Both require the matching pinned WAMRC and AOT v6.

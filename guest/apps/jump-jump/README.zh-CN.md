@@ -14,10 +14,10 @@ Confirm / South 按键同样支持长按与释放。打开后直接进入游戏�
 先按[构建与烧录指南](../../../docs/development/flashing.zh-CN.md)激活工具链：
 
 ```sh
-python3 tools/micropixel package guest/apps/jump-jump --aot-target riscv32-ilp32f --profile release
+python3 tools/cgotchi package guest/apps/jump-jump --aot-target riscv32-ilp32f --profile release
 
 # 先通过 MAC 确认 S31，再设置 DEVICE_PORT，并关闭其他串口工具。
-python3 tools/micropixel --transport usb --port "$DEVICE_PORT" \
+python3 tools/cgotchi --transport usb --port "$DEVICE_PORT" \
     run guest/apps/jump-jump --profile release --no-follow
 ```
 
