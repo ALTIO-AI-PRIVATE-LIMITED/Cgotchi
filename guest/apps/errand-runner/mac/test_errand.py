@@ -149,6 +149,17 @@ class DemoFlowTest(unittest.TestCase):
         self.assertEqual(lines[-1][2], "That quote expired")
         gotchi.close()
 
+    def test_quote_after_cancel_still_answers(self) -> None:
+        gotchi = FakeGotchi()
+        threading.Thread(target=errand_bridge.run, daemon=True,
+                         args=("127.0.0.1", gotchi.port, True, False, True)).start()
+        gotchi.accept()
+        menu = gotchi.until("MEND")
+        gotchi.send("X")  # an earlier errand was cancelled on the Gotchi
+        gotchi.send(f"Q\t{menu[0][1]}")
+        self.assertEqual(gotchi.until("QEND")[-1][0], "QEND")
+        gotchi.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

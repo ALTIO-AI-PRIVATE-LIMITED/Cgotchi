@@ -211,6 +211,7 @@ class Session:
         if self.worker and self.worker.is_alive():
             self.agent.cancel()
             self.worker.join(timeout=5)
+        self.agent.cancelled = False  # an earlier cancel must not swallow this new errand
         self.worker = threading.Thread(target=target, args=args, daemon=True)
         self.worker.start()
 
