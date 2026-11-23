@@ -6,7 +6,8 @@ The Mac does the errand on your iPhone through iPhone Mirroring with
 is booked until you press and hold a price on the Gotchi's screen for 2 seconds.
 
 1. **Tap** an errand on the menu, or tap **Say it...**, hold the on-screen
-   **Hold to talk** button and speak (Wispr Flow types into a box on the Mac),
+   **Hold to talk** button and speak (it holds Option, Wispr Flow's push-to-talk key;
+   Wispr types into a box on the Mac),
    then press VOL- to send.
 2. **Wait**: the Mac reads the fares or the cart total and stops before any
    Book or Pay button.

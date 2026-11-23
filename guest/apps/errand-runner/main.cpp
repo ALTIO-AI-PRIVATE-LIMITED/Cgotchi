@@ -5,7 +5,7 @@
 //
 // 1. Tap an errand ("Ride to Office", "Blinkit: milk") or say one with
 //    Wispr Flow (hold the on-screen talk button: the "CGotchi" Bluetooth
-//    keyboard holds Ctrl+Option; VOL- presses Enter).
+//    keyboard holds Option; VOL- presses Enter).
 // 2. The Mac reads fares or the cart total WITHOUT booking and sends quotes.
 // 3. Press and HOLD a price row for 2 seconds (it fills green). Only then the
 //    Mac books it. Letting go early or sliding off the row sends nothing;
@@ -518,7 +518,7 @@ class ErrandApp final {
         StartWorking("Booking...");
     }
 
-    // Wispr Flow push-to-talk: Ctrl+Option held over the Bluetooth keyboard.
+    // Wispr Flow push-to-talk: Option held over the Bluetooth keyboard.
     void BeginTalk() {
         if (talking_) return;
         if (!ble_) {
@@ -526,7 +526,6 @@ class ErrandApp final {
             return;
         }
         talking_ = true;
-        (void)keyboard_.Key(HidKeyUsage::kLeftControl, true);
         (void)keyboard_.Key(HidKeyUsage::kLeftAlt, true);
         Refresh();
     }
@@ -534,7 +533,6 @@ class ErrandApp final {
     void EndTalk() {
         if (!talking_) return;
         (void)keyboard_.Key(HidKeyUsage::kLeftAlt, false);
-        (void)keyboard_.Key(HidKeyUsage::kLeftControl, false);
         talking_ = false;
         Refresh();
     }
