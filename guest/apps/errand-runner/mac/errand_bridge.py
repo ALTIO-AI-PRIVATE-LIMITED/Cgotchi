@@ -21,7 +21,6 @@ import argparse
 import json
 import os
 import re
-import select
 import shutil
 import socket
 import subprocess
@@ -300,24 +299,19 @@ class Session:
 
 
 def discover() -> str | None:
+    """Find the Gotchi over Bonjour. dns-sd never exits, so read what it printed in 4 s."""
     if not shutil.which("dns-sd"):
         return None
     try:
-        proc = subprocess.Popen(["dns-sd", "-L", "CGotchi Errands", "_cgotchi-errand._tcp", "local"],
-                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        subprocess.run(["dns-sd", "-L", "CGotchi Errands", "_cgotchi-errand._tcp", "local"],
+                       capture_output=True, text=True, timeout=4)
+        out = ""
+    except subprocess.TimeoutExpired as expired:
+        out = expired.stdout.decode(errors="ignore") if isinstance(expired.stdout, bytes) else (expired.stdout or "")
     except OSError:
         return None
-    deadline, host = time.time() + 4, None
-    try:
-        while time.time() < deadline and host is None:
-            ready, _, _ = select.select([proc.stdout], [], [], 0.5)
-            if ready:
-                match = re.search(r"can be reached at (\S+?)\.?:(\d+)", proc.stdout.readline())
-                if match:
-                    host = match.group(1)
-    finally:
-        proc.kill()
-    return host
+    match = re.search(r"can be reached at (\S+?)\.?:(\d+)", out)
+    return match.group(1) if match else None
 
 
 def serve(conn: socket.socket, agent: Agent, allow_orders: bool) -> None:
@@ -338,8 +332,11 @@ def run(host: str | None, port: int, demo: bool, allow_orders: bool, once: bool 
     agent = Agent(demo)
     print(f"Errand bridge: {'DEMO (fake quotes)' if demo else 'phone'}; "
           f"orders {'ON' if allow_orders else 'OFF (confirm does not book)'}", flush=True)
+    failures = 0
     while True:
-        target = host or os.environ.get("CGOTCHI_HOST") or config().get("host") or discover()
+        saved = host or os.environ.get("CGOTCHI_HOST") or config().get("host")
+        # A saved IP that keeps refusing is stale (new Wi-Fi, new lease): look the Gotchi up again.
+        target = (discover() or saved) if failures >= 3 or not saved else saved
         if not target:
             print("Gotchi not found; open Errand Runner on it, or pass --host <ip>", flush=True)
             time.sleep(5)
@@ -348,9 +345,12 @@ def run(host: str | None, port: int, demo: bool, allow_orders: bool, once: bool 
         try:
             conn = socket.create_connection((target, port), timeout=5)
             conn.settimeout(None)
+            keepalive(conn)
+            failures = 0
             print(f"connected to {target}:{port}", flush=True)
             serve(conn, agent, allow_orders)
         except OSError as error:
+            failures += 1
             print(f"link: {error}", flush=True)
             agent.cancel()
             if conn:
@@ -358,6 +358,19 @@ def run(host: str | None, port: int, demo: bool, allow_orders: bool, once: bool 
             if once:
                 return 0
             time.sleep(3)
+
+
+def keepalive(conn: socket.socket) -> None:
+    """Notice a Gotchi that rebooted or left Wi-Fi within ~20 s instead of waiting forever."""
+    conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    idle = getattr(socket, "TCP_KEEPIDLE", getattr(socket, "TCP_KEEPALIVE", None))
+    for option, value in ((idle, 10), (getattr(socket, "TCP_KEEPINTVL", None), 3),
+                          (getattr(socket, "TCP_KEEPCNT", None), 3)):
+        if option is not None:
+            try:
+                conn.setsockopt(socket.IPPROTO_TCP, option, value)
+            except OSError:
+                pass
 
 
 def main(argv: list[str]) -> int:
