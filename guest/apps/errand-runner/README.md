@@ -3,24 +3,27 @@
 Use the CGotchi as the remote for rides (Uber, Ola, Rapido) and Blinkit orders.
 The Mac does the errand on your iPhone through iPhone Mirroring with
 [phone-harness](https://github.com/phone-harness/phone-harness), and nothing
-is booked until you hold BOOT for 2 seconds on the Gotchi.
+is booked until you press and hold a price on the Gotchi's screen for 2 seconds.
 
-1. **Pick** an errand from the menu, or pick **Say it...**, hold BOOT and speak
-   (Wispr Flow types into a box on the Mac), then press VOL- to send.
+1. **Tap** an errand on the menu, or tap **Say it...**, hold the on-screen
+   **Hold to talk** button and speak (Wispr Flow types into a box on the Mac),
+   then press VOL- to send.
 2. **Wait**: the Mac reads the fares or the cart total and stops before any
    Book or Pay button.
-3. **Choose** a quote (tap it or press VOL+), then **hold BOOT for 2 s** (or
-   hold the bar). Letting go early, VOL- or Cancel books nothing.
+3. **Press and hold a price row for 2 s**. The row fills green; when it is
+   full the Mac books that one. Letting go early or sliding your finger off the
+   row books nothing. VOL- cancels.
+
+BOOT is not used: holding it powers the Gotchi off.
 
 Payment is Cash / Pay on delivery. The agent never types a UPI PIN, OTP or
 password.
 
 | Action | Touch | Keys |
 | --- | --- | --- |
-| Move the selection | tap a row | VOL+ |
-| Choose an errand | tap it | BOOT |
-| Speak (Say it) | | hold BOOT, VOL- sends |
-| Book the chosen quote | hold the bar 2 s | hold BOOT 2 s |
+| Choose an errand | tap it | |
+| Speak (Say it) | hold "Hold to talk" | VOL- sends |
+| Book a quote | press and hold its row 2 s | |
 | Cancel | tap the screen while it works | VOL- |
 
 ## Setup (once, on the Mac)

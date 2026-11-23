@@ -3,12 +3,13 @@
 // Errand Runner: the CGotchi is the remote for rides and grocery orders that
 // a Mac places on your iPhone (phone-harness through iPhone Mirroring).
 //
-// 1. Pick an errand ("Ride to Office", "Blinkit: milk") or say one with
-//    Wispr Flow (hold BOOT, the "CGotchi" Bluetooth keyboard holds
-//    Ctrl+Option; VOL- presses Enter).
+// 1. Tap an errand ("Ride to Office", "Blinkit: milk") or say one with
+//    Wispr Flow (hold the on-screen talk button: the "CGotchi" Bluetooth
+//    keyboard holds Ctrl+Option; VOL- presses Enter).
 // 2. The Mac reads fares or the cart total WITHOUT booking and sends quotes.
-// 3. Pick a quote and HOLD BOOT for 2 seconds. Only then the Mac books it.
-//    Anything else (VOL-, Cancel, letting go early) cancels.
+// 3. Press and HOLD a price row for 2 seconds (it fills green). Only then the
+//    Mac books it. Letting go early or sliding off the row sends nothing;
+//    VOL- cancels. BOOT is never used: holding it powers the Gotchi off.
 //
 // errand_bridge.py on the Mac connects over Wi-Fi to TCP port 7334.
 // Mac -> Gotchi, one line each, tab separated:
@@ -41,7 +42,7 @@ constexpr uint32_t kMaxRows = 6U;
 constexpr uint32_t kIdMax = 24U;
 constexpr uint32_t kTextMax = 48U;
 constexpr uint32_t kLineMax = 240U;
-constexpr uint64_t kHoldUs = 2000000U;  // hold BOOT this long to book
+constexpr uint64_t kHoldUs = 2000000U;  // hold a price row this long to book
 
 constexpr int32_t kCornerRadius = 60;
 constexpr int32_t kInset = 26;
@@ -170,6 +171,11 @@ class ErrandApp final {
             Cell& cell = cells_[index];
             cell.rect = {kInset - 4, kListTop + static_cast<int32_t>(index) * kRowHeight, row_width, kRowHeight - 3};
             cell.box = scene_.CreateRoundedRect(cell.rect, Style(kRow, 10)).value();
+            // Hold-to-book progress, drawn under the labels. The Host rejects zero-size rects.
+            cell.fill = scene_.CreateRoundedRect({cell.rect.x, cell.rect.y, cell.rect.height, cell.rect.height},
+                                                 Style(Color::Mix(kGood, kRow, 60U), 10))
+                            .value();
+            cell.fill.SetVisible(false);
             cell.title = scene_.CreateLabel({cell.rect.x + 10, cell.rect.y + 4}, " ", kText, SystemFont::kSmall).value();
             cell.price = scene_.CreateLabel({cell.rect.x + cell.rect.width - 10, cell.rect.y + 4}, " ", kGood,
                                             SystemFont::kSmall)
@@ -179,12 +185,11 @@ class ErrandApp final {
         big_ = scene_.CreateLabel({width_ / 2, 92}, " ", kText, SystemFont::kMedium, true).value();
         small_ = scene_.CreateLabel({width_ / 2, 118}, " ", kSecondary, SystemFont::kSmall, true).value();
 
-        // Hold-to-book bar on the quotes page.
-        bar_rect_ = {kInset + 10, 196, width_ - (kInset + 10) * 2, 22};
-        bar_back_ = scene_.CreateRoundedRect(bar_rect_, Style(kPill, 11)).value();
-        // The Host rejects zero-size rects; start at the bar's height and hide it.
-        bar_fill_ = scene_.CreateRoundedRect({bar_rect_.x, bar_rect_.y, bar_rect_.height, bar_rect_.height}, Style(kAccent, 11))
-                        .value();
+        // Push-to-talk button on the Say it page.
+        talk_rect_ = {width_ / 2 - 75, 150, 150, 34};
+        talk_btn_ = scene_.CreateRoundedRect(talk_rect_, Style(kPill, 17)).value();
+        talk_label_ = scene_.CreateLabel({width_ / 2, talk_rect_.y + 9}, "Hold to talk", kText, SystemFont::kSmall, true)
+                          .value();
         hint_ = scene_.CreateLabel({width_ / 2, 200}, " ", kSecondary, SystemFont::kSmall, true).value();
     }
 
@@ -257,7 +262,7 @@ class ErrandApp final {
             cell.box.SetStrokeWidth(picked ? 1U : 0U);
             if (page_ == Page::kMenu) {
                 const bool voice = index == menu_count_;
-                Fit(voice ? "Say it... (hold BOOT)" : menu_[index].title, cell.rect.width - 20, text, sizeof(text));
+                Fit(voice ? "Say it..." : menu_[index].title, cell.rect.width - 20, text, sizeof(text));
                 cell.title.SetText(text);
                 cell.title.SetColor(voice ? kAccent : kText);
             } else {
@@ -284,7 +289,6 @@ class ErrandApp final {
         const char* big = " ";
         const char* small = " ";
         const char* hint = " ";
-        bool bar = false;
         switch (page_) {
             case Page::kMenu:
                 if (client_ == 0U) {
@@ -293,14 +297,14 @@ class ErrandApp final {
                 } else if (menu_count_ == 0U) {
                     big = "Waiting for errands";
                 }
-                hint = client_ == 0U ? " " : "Tap or VOL+, then BOOT";
+                hint = client_ == 0U ? " " : "Tap an errand";
                 break;
             case Page::kVoice:
                 title = "Say it";
-                big = talking_ ? "Listening..." : "Hold BOOT and speak";
+                big = talking_ ? "Listening..." : "Hold the button and speak";
                 small = ble_ ? (voice_note_[0] != '\0' ? voice_note_ : "e.g. \"ride to Koramangala\"")
                              : "Pair \"CGotchi\" Bluetooth first";
-                hint = "VOL- send   tap here to cancel";
+                hint = "VOL- send   tap outside to cancel";
                 break;
             case Page::kWorking:
                 title = "Working";
@@ -311,8 +315,7 @@ class ErrandApp final {
             case Page::kQuotes:
                 title = summary_[0] != '\0' ? summary_ : "Quotes";
                 if (quote_count_ == 0U) big = "No quotes";
-                bar = quote_count_ != 0U;
-                hint = holding_ ? "Keep holding..." : "HOLD BOOT 2 s to book   VOL- cancel";
+                hint = holding_ ? "Keep holding..." : "Hold a price 2 s to book   VOL- cancel";
                 break;
             case Page::kResult:
                 title = result_ok_ ? "Done" : "Stopped";
@@ -328,12 +331,18 @@ class ErrandApp final {
         big_.SetColor(page_ == Page::kResult ? (result_ok_ ? kGood : kAlert) : kText);
         small_.SetText(small);
         hint_.SetText(hint);
-        hint_.SetPosition({width_ / 2, bar ? 175 : 205});
-        bar_back_.SetVisible(bar);
+        hint_.SetPosition({width_ / 2, 212});
+        const bool voice = page_ == Page::kVoice;
+        talk_btn_.SetVisible(voice);
+        talk_label_.SetVisible(voice);
+        talk_btn_.SetFillColor(talking_ ? kGood : kPill);
+        talk_btn_.SetStrokeColor(talking_ ? kGood : kPill);
+        talk_label_.SetText(talking_ ? "Listening..." : "Hold to talk");
         UpdateBar();
         (void)app_.renderer().Present(scene_);
     }
 
+    // Fills the held price row from left to right over kHoldUs.
     void UpdateBar() {
         uint64_t elapsed = 0U;
         if (holding_) {
@@ -341,15 +350,15 @@ class ErrandApp final {
             elapsed = now > hold_start_ ? now - hold_start_ : 0U;
             if (elapsed > kHoldUs) elapsed = kHoldUs;
         }
-        int32_t width = static_cast<int32_t>(static_cast<uint64_t>(bar_rect_.width) * elapsed / kHoldUs);
-        // The Host rejects zero-size rects: keep the fill at least bar-height wide, hidden until it is.
-        const bool fill_shown = page_ == Page::kQuotes && quote_count_ != 0U && width >= bar_rect_.height;
-        if (width < bar_rect_.height) width = bar_rect_.height;
-        bar_fill_.SetRect({bar_rect_.x, bar_rect_.y, width, bar_rect_.height});
-        bar_fill_.SetVisible(fill_shown);
-        const Color color = holding_ ? kGood : kAccent;
-        bar_fill_.SetFillColor(color);
-        bar_fill_.SetStrokeColor(color);
+        for (uint32_t index = 0U; index < kMaxRows + 1U; ++index) {
+            Cell& cell = cells_[index];
+            const bool active = holding_ && page_ == Page::kQuotes && index == hold_row_;
+            int32_t width = static_cast<int32_t>(static_cast<uint64_t>(cell.rect.width) * elapsed / kHoldUs);
+            const bool shown = active && width >= cell.rect.height;
+            if (width < cell.rect.height) width = cell.rect.height;
+            cell.fill.SetRect({cell.rect.x, cell.rect.y, width, cell.rect.height});
+            cell.fill.SetVisible(shown);
+        }
     }
 
     // ---- Input ----
@@ -360,12 +369,31 @@ class ErrandApp final {
         last_point_ = point;
         if (phase == micropixel::TouchPhase::kDown) {
             touch_start_ = point;
-            if (page_ == Page::kQuotes && bar_rect_.contains(point)) {
-                BeginHold();
+            if (page_ == Page::kQuotes) {
+                for (uint32_t index = 0U; index < quote_count_; ++index) {
+                    if (cells_[index].rect.contains(point)) {
+                        selected_ = index;
+                        hold_row_ = index;
+                        BeginHold();
+                        break;
+                    }
+                }
+            } else if (page_ == Page::kVoice && talk_rect_.contains(point)) {
+                BeginTalk();
+                Refresh();
             }
             return;
         }
-        if (phase != micropixel::TouchPhase::kUp && phase != micropixel::TouchPhase::kCancel) {
+        if (phase == micropixel::TouchPhase::kMove) {
+            if (holding_ && !cells_[hold_row_].rect.contains(point)) {
+                EndHold();  // slid off the row: nothing is booked
+                Refresh();
+            }
+            return;
+        }
+        if (talking_) {
+            EndTalk();
+            Refresh();
             return;
         }
         if (holding_) {
@@ -376,18 +404,20 @@ class ErrandApp final {
         if (phase != micropixel::TouchPhase::kUp) return;
         switch (page_) {
             case Page::kMenu:
-            case Page::kQuotes:
                 for (uint32_t index = 0U; index < RowCount(); ++index) {
-                    if (cells_[index].rect.contains(point)) {
+                    if (cells_[index].rect.contains(point) && cells_[index].rect.contains(touch_start_)) {
                         selected_ = index;
                         Sound(errand_runner_sfx::kPress);
-                        if (page_ == Page::kMenu) Choose();
-                        else Refresh();
+                        Choose();
                         return;
                     }
                 }
                 break;
+            case Page::kQuotes:
+                break;
             case Page::kVoice:
+                if (!talk_rect_.contains(point)) Cancel();
+                break;
             case Page::kWorking:
                 Cancel();
                 break;
@@ -400,8 +430,8 @@ class ErrandApp final {
     void HandleKey(const micropixel::KeyEvent& key) {
         const auto phase = key.phase();
         const bool down = phase == micropixel::KeyPhase::kDown;
-        const bool released = phase == micropixel::KeyPhase::kUp || phase == micropixel::KeyPhase::kCancel;
         const auto code = key.code();
+        if (code == micropixel::KeyCode::kConfirm) return;  // BOOT: holding it powers the Gotchi off
         if (page_ == Page::kResult) {
             if (down) ShowPage(Page::kMenu);
             return;
@@ -418,19 +448,6 @@ class ErrandApp final {
                 SendEnter();
             } else if (page_ != Page::kMenu) {
                 Cancel();
-            }
-        } else if (code == micropixel::KeyCode::kConfirm) {
-            if (page_ == Page::kMenu && down) {
-                Choose();
-            } else if (page_ == Page::kVoice) {
-                if (down) BeginTalk();
-                if (released) EndTalk();
-            } else if (page_ == Page::kQuotes) {
-                if (down) BeginHold();
-                if (released && holding_) {
-                    EndHold();
-                    Refresh();
-                }
             }
         }
     }
@@ -471,7 +488,7 @@ class ErrandApp final {
         ShowPage(Page::kMenu);
     }
 
-    // Booking needs BOOT (or the bar) held for kHoldUs without letting go.
+    // Booking needs a price row held for kHoldUs without letting go or sliding off.
     void BeginHold() {
         if (holding_ || quote_count_ == 0U || client_ == 0U) return;
         holding_ = true;
@@ -494,7 +511,7 @@ class ErrandApp final {
         uint32_t length = 0U;
         line[0] = '\0';
         Append(line, sizeof(line), length, "C\t");
-        Append(line, sizeof(line), length, quotes_[selected_].id);
+        Append(line, sizeof(line), length, quotes_[hold_row_].id);
         Append(line, sizeof(line), length, "\n");
         SendLine(line);
         Sound(errand_runner_sfx::kConfirm);
@@ -668,6 +685,7 @@ class ErrandApp final {
     struct Cell final {
         Rect rect{};
         micropixel::RoundedRectNode box;
+        micropixel::RoundedRectNode fill;
         micropixel::LabelNode title;
         micropixel::LabelNode price;
     };
@@ -686,9 +704,9 @@ class ErrandApp final {
     micropixel::LabelNode big_;
     micropixel::LabelNode small_;
     micropixel::LabelNode hint_;
-    Rect bar_rect_{};
-    micropixel::RoundedRectNode bar_back_;
-    micropixel::RoundedRectNode bar_fill_;
+    Rect talk_rect_{};
+    micropixel::RoundedRectNode talk_btn_;
+    micropixel::LabelNode talk_label_;
     int32_t width_{};
     int32_t height_{};
     micropixel::Point touch_start_{};
@@ -701,6 +719,7 @@ class ErrandApp final {
     bool talking_{};
     bool holding_{};
     uint64_t hold_start_{};
+    uint32_t hold_row_{};
 
     std::array<Row, kMaxRows> menu_{};
     std::array<Row, kMaxRows> next_menu_{};
