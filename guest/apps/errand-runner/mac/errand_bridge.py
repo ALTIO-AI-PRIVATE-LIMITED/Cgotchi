@@ -158,7 +158,21 @@ class Agent:
             return None
         return last_json(out or "") or {"error": "no answer from the phone agent"}
 
+    def phone_ready(self) -> str | None:
+        """None when iPhone Mirroring is live, else a short reason for the Gotchi."""
+        try:
+            done = subprocess.run(["phone-harness"], input="print(connection_state())\n",
+                                  capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return "iPhone not reachable"
+        state = (done.stdout.strip().splitlines() or [""])[-1]
+        return None if state == "ready" else "iPhone not connected: open Mirroring, lock phone"
+
     def quote(self, task: str) -> dict | None:
+        if not self.demo:
+            problem = self.phone_ready()
+            if problem:
+                return {"error": problem}
         if self.demo:
             time.sleep(2)
             return None if self.cancelled else {
@@ -169,6 +183,9 @@ class Agent:
         return self._claude(QUOTE_PROMPT.format(task=task), QUOTE_TIMEOUT_S)
 
     def book(self, task: str, quote: dict) -> dict | None:
+        problem = self.phone_ready()
+        if problem:
+            return {"error": problem}
         return self._claude(BOOK_PROMPT.format(task=task, quote=json.dumps(quote)), BOOK_TIMEOUT_S)
 
 

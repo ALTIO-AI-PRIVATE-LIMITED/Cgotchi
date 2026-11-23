@@ -161,5 +161,13 @@ class DemoFlowTest(unittest.TestCase):
         gotchi.close()
 
 
+class PhoneCheckTest(unittest.TestCase):
+    def test_quote_fails_fast_when_phone_not_ready(self) -> None:
+        agent = errand_bridge.Agent(demo=False)
+        agent.phone_ready = lambda: "iPhone not connected"  # type: ignore[method-assign]
+        agent._claude = lambda *a: self.fail("must not start the phone agent")  # type: ignore[method-assign]
+        self.assertEqual(agent.quote("ride"), {"error": "iPhone not connected"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
