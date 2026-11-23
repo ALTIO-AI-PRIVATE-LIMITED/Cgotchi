@@ -40,8 +40,8 @@ QUOTE_TIMEOUT_S = 6 * 60
 BOOK_TIMEOUT_S = 4 * 60
 
 DEFAULT_MENU = [
-    {"id": "ride", "label": "Ride: MG Road to Koramangala",
-     "task": "Ride from MG Road Metro Station, Bengaluru to Koramangala, Bengaluru. Compare Uber, Ola and Rapido."},
+    {"id": "ride", "label": "Uber: MG Road to Koramangala",
+     "task": "Uber only: ride from MG Road Metro Station, Bengaluru to Koramangala, Bengaluru. Open only the Uber app, read the fare options, and stop before any Choose/Book button. Do not open Ola or Rapido."},
     {"id": "auto", "label": "Auto: MG Road to Koramangala",
      "task": "Auto rickshaw from MG Road Metro Station, Bengaluru to Koramangala, Bengaluru on Uber, Ola and Rapido."},
     {"id": "milk", "label": "Blinkit: 1 milk",
