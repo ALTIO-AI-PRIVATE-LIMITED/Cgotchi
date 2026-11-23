@@ -182,7 +182,8 @@ class ErrandApp final {
         // Hold-to-book bar on the quotes page.
         bar_rect_ = {kInset + 10, 196, width_ - (kInset + 10) * 2, 22};
         bar_back_ = scene_.CreateRoundedRect(bar_rect_, Style(kPill, 11)).value();
-        bar_fill_ = scene_.CreateRoundedRect({bar_rect_.x, bar_rect_.y, 0, bar_rect_.height}, Style(kAccent, 11))
+        // The Host rejects zero-size rects; start at the bar's height and hide it.
+        bar_fill_ = scene_.CreateRoundedRect({bar_rect_.x, bar_rect_.y, bar_rect_.height, bar_rect_.height}, Style(kAccent, 11))
                         .value();
         hint_ = scene_.CreateLabel({width_ / 2, 200}, " ", kSecondary, SystemFont::kSmall, true).value();
     }
@@ -329,7 +330,6 @@ class ErrandApp final {
         hint_.SetText(hint);
         hint_.SetPosition({width_ / 2, bar ? 175 : 205});
         bar_back_.SetVisible(bar);
-        bar_fill_.SetVisible(bar);
         UpdateBar();
         (void)app_.renderer().Present(scene_);
     }
@@ -341,8 +341,12 @@ class ErrandApp final {
             elapsed = now > hold_start_ ? now - hold_start_ : 0U;
             if (elapsed > kHoldUs) elapsed = kHoldUs;
         }
-        const int32_t width = static_cast<int32_t>(static_cast<uint64_t>(bar_rect_.width) * elapsed / kHoldUs);
+        int32_t width = static_cast<int32_t>(static_cast<uint64_t>(bar_rect_.width) * elapsed / kHoldUs);
+        // The Host rejects zero-size rects: keep the fill at least bar-height wide, hidden until it is.
+        const bool fill_shown = page_ == Page::kQuotes && quote_count_ != 0U && width >= bar_rect_.height;
+        if (width < bar_rect_.height) width = bar_rect_.height;
         bar_fill_.SetRect({bar_rect_.x, bar_rect_.y, width, bar_rect_.height});
+        bar_fill_.SetVisible(fill_shown);
         const Color color = holding_ ? kGood : kAccent;
         bar_fill_.SetFillColor(color);
         bar_fill_.SetStrokeColor(color);
