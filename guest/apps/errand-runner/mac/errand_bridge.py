@@ -263,6 +263,7 @@ class Session:
         if result is None:
             return  # cancelled
         quotes = result.get("quotes") or []
+        print(f"result: {json.dumps(result, ensure_ascii=False)}", flush=True)
         if not quotes:
             self.send("R", "fail", result.get("error") or "No prices found")
             return
