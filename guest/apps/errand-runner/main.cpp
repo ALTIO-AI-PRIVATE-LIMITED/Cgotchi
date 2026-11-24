@@ -130,6 +130,7 @@ class ErrandApp final {
                 Refresh();
             }
         } else if (event.type() == micropixel::EventType::kResume) {
+            touch_down_ = false;
             StartServer();
             Refresh();
         } else if (const auto* net = event.network()) {
@@ -369,6 +370,7 @@ class ErrandApp final {
         last_point_ = point;
         if (phase == micropixel::TouchPhase::kDown) {
             touch_start_ = point;
+            touch_down_ = true;
             if (page_ == Page::kQuotes) {
                 for (uint32_t index = 0U; index < quote_count_; ++index) {
                     if (cells_[index].rect.contains(point)) {
@@ -384,6 +386,9 @@ class ErrandApp final {
             }
             return;
         }
+        // A release whose press we never saw (e.g. the tap that opened the app
+        // from App Hall) must not pick a row.
+        if (!touch_down_) return;
         if (phase == micropixel::TouchPhase::kMove) {
             if (holding_ && !cells_[hold_row_].rect.contains(point)) {
                 EndHold();  // slid off the row: nothing is booked
@@ -391,6 +396,7 @@ class ErrandApp final {
             }
             return;
         }
+        touch_down_ = false;
         if (talking_) {
             EndTalk();
             Refresh();
@@ -708,6 +714,7 @@ class ErrandApp final {
     int32_t width_{};
     int32_t height_{};
     micropixel::Point touch_start_{};
+    bool touch_down_{};
     micropixel::Point last_point_{};
 
     Page page_{Page::kMenu};

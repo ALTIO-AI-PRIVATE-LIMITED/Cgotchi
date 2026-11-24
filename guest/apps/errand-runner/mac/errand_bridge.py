@@ -147,7 +147,8 @@ class Agent:
             setup()
         command = ["claude", "-p", prompt, "--permission-mode", "acceptEdits",
                    "--allowedTools", "Bash(phone-harness:*)", "Read"]
-        self.proc = subprocess.Popen(command, cwd=WORKDIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.proc = subprocess.Popen(command, cwd=WORKDIR, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, text=True)
         try:
             out, _ = self.proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -155,7 +156,10 @@ class Agent:
             return {"error": "timed out"}
         if self.cancelled:
             return None
-        return last_json(out or "") or {"error": "no answer from the phone agent"}
+        answer = last_json(out or "")
+        if not answer:
+            print(f"phone agent said: {(out or '').strip()[-400:]}", flush=True)
+        return answer or {"error": "no answer from the phone agent"}
 
     def phone_ready(self) -> str | None:
         """None when iPhone Mirroring is live, else a short reason for the Gotchi."""
