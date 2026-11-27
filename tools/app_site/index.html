@@ -98,6 +98,11 @@
   .more { font-size:13px; } .more summary { cursor:pointer; color:var(--accent2); font-weight:500; }
   .more .info { padding-top:6px; } .more b { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-top:8px; }
   .more p { margin:2px 0 0; } .more ul { margin:4px 0 0; padding-left:18px; }
+  #usbHelp { margin-bottom:12px; } #usbHelp ol { margin:8px 0 2px; padding-left:20px; line-height:1.5; } #usbHelp li { margin:4px 0; }
+  #usbHelp b { display:inline; font-size:inherit; text-transform:none; letter-spacing:0; color:var(--ink); margin:0; }
+  #usbHelp .btns { margin:6px 0 2px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #usbHelp a.btn { display:inline-block; padding:6px 12px; border-radius:6px; background:var(--ink); color:#fff; text-decoration:none; font-weight:500; }
+  #usbHelp code { font-size:12px; background:var(--line); padding:1px 5px; border-radius:4px; }
   .actions { display:flex; gap:7px; flex-wrap:wrap; }
   .progress { height:5px; background:var(--line); border-radius:3px; overflow:hidden; } .progress div { height:100%; background:var(--accent); width:0; transition:width .2s; }
 
@@ -184,6 +189,19 @@
 
   <div class="wrap">
     <div class="msg warn" id="noserial" hidden>This browser can't talk to USB devices. Open this page in Chrome or Edge on a computer.</div>
+    <details class="msg more" id="usbHelp">
+      <summary>Gotchi not showing up when you click Connect?</summary>
+      <ol>
+        <li><b>Use a data cable.</b> Many USB-C cables only charge. Try the cable that came in the box, or another one you know moves files.</li>
+        <li><b>Use the right port.</b> Plug into the Gotchi's <b>USB 5V IN</b> port, not the UART port, and straight into the computer, not a hub.</li>
+        <li><b>Use Chrome or Edge</b> on a laptop or desktop. Phones and Safari/Firefox can't connect.</li>
+        <li><b>Windows: install the USB driver.</b> Windows 10 and 11 usually find the Gotchi on their own. If it still doesn't show up (or you're on Windows 7/8), install the Espressif USB driver, then unplug and replug the Gotchi.
+          <div class="btns"><a class="btn" href="https://dl.espressif.com/dl/idf-driver/idf-driver-esp32-usb-jtag-2021-07-15.zip" rel="noopener">Download Windows driver</a> <a href="https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/establish-serial-connection.html" target="_blank" rel="noopener">Driver help</a></div></li>
+        <li><b>Mac:</b> no driver needed. Unplug, wait 5 seconds, plug back in, then click Connect again.</li>
+        <li><b>Linux:</b> no driver needed. Run <code>sudo usermod -aG dialout $USER</code>, then log out and back in.</li>
+        <li>In the Connect window, pick the entry named <b>USB JTAG/serial debug unit</b> (or similar), then click Connect.</li>
+      </ol>
+    </details>
 
     <section class="view" id="view-apps">
       <div class="hero">
