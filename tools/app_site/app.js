@@ -262,7 +262,7 @@ $('connect').onclick = async () => {
   try {
     const c = new GotchiUsb(); await c.connect(); usb = c;
     await refreshDevice();
-  } catch (e) { usb = null; if (e.name !== 'NotFoundError') alertMsg('Could not connect: ' + e.message); }
+  } catch (e) { usb = null; $('usbHelp').open = true; if (e.name !== 'NotFoundError') alertMsg('Could not connect: ' + e.message); }
 };
 $('updateAll').onclick = async () => {
   const todo = catalog.map(a => ({ ...a, rel: releaseFor(a), dev: device?.apps.find(d => d.appId === a.appId) }))
